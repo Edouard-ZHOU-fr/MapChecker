@@ -1,0 +1,22 @@
+# check_lanelet_map.py 的配置
+# 相对路径以 check_lanelet_map.py 所在目录 (MapChecker/) 为基准；命令行参数优先于这里的设置
+
+# 要检查的 Lanelet2 地图
+input: lanelet2_map.osm
+
+# 手动忽略的 lanelet 列表 (文件不存在时不忽略任何 lanelet)
+ignore_file: config/ignore.yaml
+
+# 日志输出
+log:
+  enabled: true      # true: 终端输出的同时写入日志文件 (无颜色)
+  dir: logs          # 日志目录，文件名为 map_check_YYYYmmdd_HHMMSS.log
+
+# 检查阈值
+turn_angle: 30.0         # 判定为弯道的最小航向变化 (度)
+turn_window: 30.0        # 计算航向变化的最大弧长窗口 (米)
+min_overlap_area: 1.0    # 判定为重叠的最小面积 (m²)
+ignore_isolated_turns: true   # true: 弯道若不与其他 lane 交叉 / 汇入 (分叉不算)，不检查 turn_direction
+straight_as_turn_light: true  # true: straight 算作转向灯，只检查弯道和与其他 lane 相交的直行 lanelet 是否设置了 turn_direction (left/right/straight 均可)，不检查方向
+                              # false: 检查方向是否与几何一致 (弯道标 straight 或方向相反报警，直行 lanelet 不要求标 straight)
+only_check_AOI: true          # true: 只检查完全位于地图 AOI (type=detection_area, subtype=AOI) 内的 lanelet

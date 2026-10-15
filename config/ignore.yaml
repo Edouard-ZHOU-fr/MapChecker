@@ -1,0 +1,20 @@
+# 手动忽略的 lanelet
+# 被忽略的 lanelet 不再输出对应的 WARNING / ERROR，并在报告末尾列出
+#
+# 写法:
+#   - 614                       只写 lanelet id
+#   - 614: 主路弯道，不需要转向灯   lanelet id: 忽略原因
+#
+# all:            所有检查都忽略
+# turn_direction: 只在检查 1 (转向灯) 中忽略
+# right_of_way:   只在检查 2 (路权) 中忽略，涉及该 lanelet 的重叠对和 right_of_way 规则元素都不再报告
+
+all: [
+      13252: "roule pas", 17618,15407,18168,12683,13535,14866,
+      18177: "feux circulation",
+      15407: "roule pas",20728: "pont",7001,20733,20742,20749,20826,22360,
+      21568: "sorte intersection",21573
+      ]
+
+turn_direction: []
+right_of_way: []
