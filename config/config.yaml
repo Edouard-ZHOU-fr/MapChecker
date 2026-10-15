@@ -22,7 +22,7 @@ min_overlap_area: 1.0    # 判定为重叠的最小面积 (m²)
 ignore_isolated_turns: true   # true: 弯道若不与其他 lane 交叉 / 汇入 (分叉不算)，不检查 turn_direction
 straight_as_turn_light: true  # true: straight 算作转向灯，只检查弯道和与其他 lane 相交的直行 lanelet 是否设置了 turn_direction (left/right/straight 均可)，不检查方向
                               # false: 检查方向是否与几何一致 (弯道标 straight 或方向相反报警，直行 lanelet 不要求标 straight)
-only_check_AOI: true          # true: 只检查完全位于地图 AOI (type=detection_area, subtype=AOI) 内的 lanelet
+only_check_AOI: true          # true: 只检查完全位于地图 AOI (type=detection_area, subtype=AOI) 内的 lanelet；地图中没有 AOI 时不做任何检查
 
 autoware_checking: true       # true: 同时运行 utils/validate_autoware_map.py (需要先 source ROS) 并合并结果:
                               #   其 turn_direction 结果合并到检查 1 (同一 lanelet 只报告一次)，其余在检查 3 中报告

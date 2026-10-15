@@ -59,8 +59,9 @@ def run(map_path, opts, ignore_entries, ignore_path, out, validate_autoware=None
     out.info(f"Date: {time.strftime('%Y-%m-%d %H:%M:%S')}")
     out.info(f"Map: {os.path.abspath(map_path)}")
     out.info(f"Lanelets: {len(lanelets)}, regulatory elements: {len(reg_elems)}")
-    if out.model:
-        out.info(f"Model: {out.model.path} (trained {out.model.trained}), p = probability that a warning is a real issue")
+    if opts["only_check_AOI"] and not aois:
+        out.info("AOI: only_check_AOI is enabled but no AOI found in map, no check performed")
+        return 0
 
     # Autoware 检查先运行，turn_direction 结果在检查 1 中与几何检查合并
     autoware = validate_autoware(map_path) if validate_autoware else None
@@ -91,11 +92,8 @@ def run_checks(lanelets, reg_elems, aois, opts, out, autoware=None):
     vehicle = {k: v for k, v in lanelets.items() if v.is_vehicle or k in (autoware_td or {})}
     aoi_ids = None
     if opts["only_check_AOI"]:
-        if aois:
-            aoi_ids = lanelets_in_aoi(vehicle, aois)
-            out.info(f"AOI: {len(aois)} area(s), {len(aoi_ids)} of {len(vehicle)} lanelets fully inside (only these are checked)")
-        else:
-            out.info("AOI: only_check_AOI is enabled but no AOI found in map, checking the whole map")
+        aoi_ids = lanelets_in_aoi(vehicle, aois)
+        out.info(f"AOI: {len(aois)} area(s), {len(aoi_ids)} of {len(vehicle)} lanelets fully inside (only these are checked)")
 
     # 几何关系始终用整张地图计算，AOI 只限制报告范围
     overlaps = find_overlaps(lanelets, opts["min_overlap_area"])
@@ -126,7 +124,8 @@ def parse_args():
     parser.add_argument("--straight-as-turn-light", action=argparse.BooleanOptionalAction, default=None,
                         help="count turn_direction=straight as a turn light setting (overrides config)")
     parser.add_argument("--only-check-aoi", action=argparse.BooleanOptionalAction, default=None,
-                        help="only check lanelets fully inside the AOI of the map (overrides config)")
+                        help="only check lanelets fully inside the AOI of the map, no check is performed if the "
+                             "map has no AOI (overrides config)")
     parser.add_argument("--autoware-checking", action=argparse.BooleanOptionalAction, default=None,
                         help="also run utils/validate_autoware_map.py and merge its results, requires ROS "
                              "(overrides config)")
