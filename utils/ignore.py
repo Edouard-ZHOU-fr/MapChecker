@@ -4,7 +4,7 @@ import os
 
 import yaml
 
-CATEGORIES = ("turn_direction", "right_of_way")
+CATEGORIES = ("turn_direction", "right_of_way", "autoware")
 IGNORE_SCOPES = ("all",) + CATEGORIES
 
 

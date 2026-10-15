@@ -6,7 +6,9 @@ Lanelet2 地图检查工具
   1. 转向灯 (turn_direction): 弯道 / 转弯，以及与其他 lane 相交的直行 lanelet 是否设置了 turn_direction
   2. 路权 (right_of_way): 交叉 / 汇入的 lanelet 是否设置了 right_of_way；
      已有 right_of_way 是否被优先 lanelet 引用、两条 lanelet 是否真的重叠 (完全不重叠时输出红色 ERROR)
-各参数的含义见 config/config.yaml。只依赖 numpy 和 PyYAML，不需要 source ROS。
+  3. Autoware (autoware_checking 为 true 时): 运行 utils/validate_autoware_map.py 并合并结果，
+     其 turn_direction 结果合并到检查 1 (同一 lanelet 只报告一次)，其余 (load / elevation / traffic_light) 在检查 3 中报告
+各参数的含义见 config/config.yaml。只依赖 numpy 和 PyYAML；只有 autoware_checking 为 true 时才需要 source ROS。
 
 用法:
   python3 check_lanelet_map.py                      # 使用 config/config.yaml
@@ -28,6 +30,7 @@ import time
 
 import yaml
 
+from utils.check_autoware import check_autoware
 from utils.check_right_of_way import check_right_of_way
 from utils.check_turn_direction import check_turn_direction
 from utils.config import load_config
@@ -41,13 +44,17 @@ BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 DEFAULT_CONFIG_PATH = os.path.join(BASE_DIR, "config", "config.yaml")
 
 
-def run(map_path, opts, ignore_entries, ignore_path, out):
+def run(map_path, opts, ignore_entries, ignore_path, out, validate_autoware=None):
     lanelets, reg_elems, aois = load_map(map_path)
     out.info(f"Date: {time.strftime('%Y-%m-%d %H:%M:%S')}")
     out.info(f"Map: {os.path.abspath(map_path)}")
     out.info(f"Lanelets: {len(lanelets)}, regulatory elements: {len(reg_elems)}")
 
-    vehicle = {k: v for k, v in lanelets.items() if v.is_vehicle}
+    # Autoware 检查先运行，turn_direction 结果在检查 1 中与几何检查合并
+    autoware = validate_autoware(map_path) if validate_autoware else None
+    autoware_td = autoware.turn_direction if autoware else None
+    # Autoware 报告的 lanelet 即使 subtype 不在 VEHICLE_SUBTYPES 中也参与检查 1
+    vehicle = {k: v for k, v in lanelets.items() if v.is_vehicle or k in (autoware_td or {})}
     aoi_ids = None
     if opts["only_check_AOI"]:
         if aois:
@@ -61,13 +68,19 @@ def run(map_path, opts, ignore_entries, ignore_path, out):
     # 与其他 lane 相交 (交叉 / 汇入) 的 lanelet；分叉不算相交，分叉出去的弯道视为独立转向
     intersecting = {x for a_id, b_id, rel, *_ in overlaps if rel != "diverge" for x in (a_id, b_id)}
 
-    check_turn_direction({k: v for k, v in vehicle.items() if aoi_ids is None or k in aoi_ids}, intersecting, opts, out)
+    check_turn_direction({k: v for k, v in vehicle.items() if aoi_ids is None or k in aoi_ids}, intersecting, opts, out,
+                         autoware_td)
     check_right_of_way(lanelets, reg_elems, overlaps, aoi_ids, opts, out)
+    if autoware:
+        check_autoware(autoware, aoi_ids, out)
 
     out.header("Summary")
     out.info(f"turn_direction warnings: {out.count['turn_direction']}")
     out.info(f"right_of_way warnings:   {out.count['right_of_way']}")
     out.info(f"right_of_way errors:     {out.errors['right_of_way']}")
+    if autoware:
+        out.info(f"autoware warnings:       {out.count['autoware']}")
+        out.info(f"autoware errors:         {out.errors['autoware']}")
     if out.total == 0:
         out.ok("No issue found")
 
@@ -92,6 +105,9 @@ def parse_args():
                         help="count turn_direction=straight as a turn light setting (overrides config)")
     parser.add_argument("--only-check-aoi", action=argparse.BooleanOptionalAction, default=None,
                         help="only check lanelets fully inside the AOI of the map (overrides config)")
+    parser.add_argument("--autoware-checking", action=argparse.BooleanOptionalAction, default=None,
+                        help="also run utils/validate_autoware_map.py and merge its results, requires ROS "
+                             "(overrides config)")
     parser.add_argument("--ignore-file", help="file listing lanelets to ignore (overrides config)")
     parser.add_argument("--no-color", action="store_true", help="disable colored output")
     return parser, parser.parse_args()
@@ -123,8 +139,16 @@ def main():
         "ignore_isolated_turns": args.ignore_isolated_turns,
         "straight_as_turn_light": args.straight_as_turn_light,
         "only_check_AOI": args.only_check_aoi,
+        "autoware_checking": args.autoware_checking,
     }
     opts = {k: cfg[k] if v is None else v for k, v in cli.items()}
+
+    validate_autoware = None
+    if opts["autoware_checking"]:
+        try:
+            from utils.validate_autoware_map import validate as validate_autoware
+        except ImportError as e:
+            parser.error(f"autoware_checking requires ROS ({e}), or run with --no-autoware-checking")
 
     log_file = log_path = None
     if cfg["log"]["enabled"]:
@@ -134,7 +158,7 @@ def main():
 
     out = Printer(not args.no_color and sys.stdout.isatty(), log_file, ignore_by_category(ignore_entries))
     try:
-        total = run(map_path, opts, ignore_entries, ignore_path, out)
+        total = run(map_path, opts, ignore_entries, ignore_path, out, validate_autoware)
     finally:
         if log_file:
             log_file.close()

@@ -15,6 +15,7 @@ DEFAULT_CONFIG = {
     "straight_as_turn_light": True,
     "ignore_file": "config/ignore.yaml",
     "only_check_AOI": False,
+    "autoware_checking": False,
 }
 
 
