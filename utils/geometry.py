@@ -107,6 +107,23 @@ def overlap_area(a, b, step=0.5, cache=None):
     return best_area, best_pts
 
 
+def principal_extent(pts):
+    """点集沿主方向 (PCA 第一主轴) 的长度；交叉路口的重叠区约为车道宽，狭窄道路上平行车道的重叠区很长"""
+    if len(pts) < 2:
+        return 0.0
+    c = pts - pts.mean(axis=0)
+    return float(np.ptp(c @ np.linalg.svd(c, full_matrices=False)[2][0]))
+
+
+def centerline_enters(a, b, step=0.5):
+    """
+    至少一条 lanelet 的中心线进入另一条 lanelet 的范围，即车辆会驶入对方车道 (真的交叉)；
+    否则两条 lanelet 只是边缘相碰，例如分叉起点蹭到对向车道、狭窄道路上的平行车道
+    """
+    return bool(points_in_polygon(centerline(b, step), a.polygon).any()
+                or points_in_polygon(centerline(a, step), b.polygon).any())
+
+
 def polygon_distance(pa, pb):
     """两个不相交多边形边界之间的最小距离"""
     def vertex_to_edges(p, poly):

@@ -1,0 +1,30 @@
+# 由 train_model.py 生成，不要手动修改
+# p = 1 / (1 + exp(-(intercept + Σ coef * (x - mean) / scale)))，p 为告警是真问题 (之后会被修复) 的概率
+# 特征的含义见 utils/features.py；cv_auc 为 leave-one-map-out 交叉验证的 AUC
+trained: '2026-10-15 15:24:36'
+turn_direction:
+  features: [abs_angle, curve, log_length, n_crossing, n_merge, n_diverge, log_overlap_length,
+    traffic_light, isolated]
+  mean: [27.668521, 0.356013, 2.877788, 0.609177, 0.512658, 0.537975, 1.733509, 0.022152,
+    0.400316]
+  scale: [33.683159, 0.478819, 0.775476, 1.088248, 0.608353, 0.615065, 1.203104, 0.147177,
+    0.489962]
+  coef: [0.008511, 0.076873, -0.202982, -0.662452, -0.441081, 0.248734, -0.099541,
+    -0.249292, -1.513117]
+  intercept: -0.21669
+  min: [0.0, 0.0, 0.39, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
+  max: [188.8042, 1.0, 5.6818, 6.0, 2.0, 2.0, 5.1956, 1.0, 1.0]
+  samples: 632
+  positives: 218
+  cv_auc: 0.768
+right_of_way:
+  features: [log_area, merge, heading_diff, max_abs_angle]
+  mean: [2.374954, 0.412256, 80.491808, 59.248838]
+  scale: [0.574506, 0.492241, 62.797638, 32.165493]
+  coef: [0.902704, -0.036739, -0.331255, 0.371616]
+  intercept: -0.225448
+  min: [0.7108, 0.0, 0.0914, 0.1933]
+  max: [4.2094, 1.0, 179.976, 156.1415]
+  samples: 359
+  positives: 105
+  cv_auc: 0.718

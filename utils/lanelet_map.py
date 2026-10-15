@@ -94,7 +94,7 @@ def _orient_bounds(left_ids, right_ids, nodes):
 
 
 def load_map(path):
-    """返回 (lanelets, reg_elems, aois)；aois 为 AOI 多边形列表"""
+    """path 为文件路径或文件对象；返回 (lanelets, reg_elems, aois)，aois 为 AOI 多边形列表"""
     root = ET.parse(path).getroot()
 
     local, latlon = {}, {}

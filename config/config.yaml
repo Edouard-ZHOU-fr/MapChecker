@@ -7,6 +7,9 @@ input: lanelet2_map.osm
 # 手动忽略的 lanelet 列表 (文件不存在时不忽略任何 lanelet)
 ignore_file: config/ignore.yaml
 
+# 告警打分模型 (train_model.py 生成)，Using_LR 为 true 时使用
+model_file: config/model.yaml
+
 # 日志输出
 log:
   enabled: true      # true: 终端输出的同时写入日志文件 (无颜色)
@@ -21,5 +24,9 @@ straight_as_turn_light: true  # true: straight 算作转向灯，只检查弯道
                               # false: 检查方向是否与几何一致 (弯道标 straight 或方向相反报警，直行 lanelet 不要求标 straight)
 only_check_AOI: true          # true: 只检查完全位于地图 AOI (type=detection_area, subtype=AOI) 内的 lanelet；地图中没有 AOI 时不做任何检查
 
-autoware_checking: false       # true: 同时运行 utils/validate_autoware_map.py (需要先 source ROS) 并合并结果:
+autoware_checking: true       # true: 同时运行 utils/validate_autoware_map.py (需要先 source ROS) 并合并结果:
                               #   其 turn_direction 结果合并到检查 1 (同一 lanelet 只报告一次)，其余在检查 3 中报告
+
+Using_LR: true                # true: 用 logistic regression 模型 (model_file) 给缺少 turn_direction / right_of_way 的 WARNING 打分，
+                              #   输出 [WARNING p=0.93]，p 为该告警是真问题 (之后会被地图团队修复) 的概率，各检查中按 p 从大到小输出；
+                              #   需要先运行 build_dataset.py 和 train_model.py 生成模型，详见 README.md
