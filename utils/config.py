@@ -14,8 +14,10 @@ DEFAULT_CONFIG = {
     "ignore_isolated_turns": False,
     "straight_as_turn_light": True,
     "ignore_file": "config/ignore.yaml",
+    "model_file": "config/model.yaml",
     "only_check_AOI": False,
     "autoware_checking": False,
+    "Using_LR": False,
 }
 
 
@@ -32,4 +34,5 @@ def load_config(path, base_dir):
     cfg["input"] = resolve(cfg["input"])
     cfg["log"]["dir"] = resolve(cfg["log"]["dir"])
     cfg["ignore_file"] = resolve(cfg["ignore_file"])
+    cfg["model_file"] = resolve(cfg["model_file"]) if cfg["model_file"] else None
     return cfg

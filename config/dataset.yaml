@@ -1,0 +1,31 @@
+# build_dataset.py 的配置: 从地图仓库的 git 历史生成 train_model.py 的训练数据
+# 相对路径以 MapChecker/ 为基准；检查阈值使用 config.yaml 中的设置
+#
+# 对每个仓库，按时间顺序在地图的每个提交版本 (以及未提交的修改) 上运行检查 1 和检查 2，跟踪每条告警:
+#   label 1 (真问题): 告警在之后的版本中消失，且原因是补上了 turn_direction / 覆盖该 lanelet 对的 right_of_way
+#   label 0 (误报):   告警保留到最新版本，且
+#                       - 相关 lanelet 在该仓库的 ignore_file 中，或
+#                       - 告警出现之后，同一仓库同一检查项至少有 min_fix_rounds 个版本修复了其他告警，这条却一直没修
+#                         (按版本数而不是修复条数计算，因为一次提交常常批量修复几十条)
+#   不标注:           告警因 lanelet 被删除 / 几何改变而消失，或保留到最新版本但不满足上面的条件 (可能只是还没修)
+# 注意: label 表示 "地图团队之后是否修复了它"，不等于 Autoware 是否真的需要
+
+output_dir: data          # 生成 turn_direction.csv 和 right_of_way.csv
+map: lanelet2_map.osm     # 地图在仓库中的路径
+include_working_copy: true  # 地图有未提交的修改时，把工作区的版本作为最新版本
+autoware_checking: true     # true: 同时运行 Autoware 检查 (需要先 source ROS)，只由 Autoware 检出的 turn_direction 告警
+                            #   (例如分叉) 也作为训练样本；false 时模型没有见过这类告警，检查时不给它们打分
+min_fix_rounds: 2
+
+repos:
+  - path: ~/milla_git_ws/Maps/Noisy_le_Roi_map_planning
+    ignore_file: config/ignore.yaml
+  - path: ~/milla_git_ws/Maps/buc_map_planning
+  - path: ~/milla_git_ws/Maps/cern_map_planning
+  - path: ~/milla_git_ws/Maps/demo_buc_map_planning
+  - path: ~/milla_git_ws/Maps/larochelle_map_planning
+  - path: ~/milla_git_ws/Maps/le_plessis_trevise_map_planning
+  - path: ~/milla_git_ws/Maps/le_plessis_trevise_q2_map_planning
+  - path: ~/milla_git_ws/Maps/sqy_map_planning
+  - path: ~/milla_git_ws/Maps/utac_autoroute_map_planning
+  - path: ~/milla_git_ws/Maps/velizy_base_aero_map_planning
