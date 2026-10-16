@@ -65,9 +65,10 @@ def check_turn_direction(lanelets, intersecting, opts, out, ctx, autoware=None, 
                 msg = f"conflicts with {', '.join(autoware[ll.id])} in Autoware routing graph without turn_direction"
 
         if msg:
-            where = f"middle {fmt_xy(center[len(center) // 2])}, angle {angle:+.0f}°, length {arc_length(center)[-1]:.1f} m"
+            middle = center[len(center) // 2]
+            where = f"middle {fmt_xy(middle)}, angle {angle:+.0f}°, length {arc_length(center)[-1]:.1f} m"
             out.warn("turn_direction", f"lanelet {ll.id}: {msg} | {where}", (ll.id,),
-                     turn_direction_features(ll, center, angle, opts, ctx))
+                     turn_direction_features(ll, center, angle, opts, ctx), middle)
     out.flush()
 
     if ignore_isolated:

@@ -15,6 +15,14 @@ log:
   enabled: true      # true: 终端输出的同时写入日志文件 (无颜色)
   dir: logs          # 日志目录，文件名为 map_check_YYYYmmdd_HHMMSS.log
 
+# 问题热力图 (需要 matplotlib)
+heatmap:
+  enabled: true      # true: 在报告末尾列出问题频发的区域 (Hotspots)，并在日志目录生成同名的 map_check_YYYYmmdd_HHMMSS.png:
+                     #   按问题密度从蓝 (少) 到红 (多) 给地图着色，并圈出这些区域 (#排名 问题数)；
+                     #   Using_LR 为 true 时按 p 加权: 有分数的 WARNING 计 p 条，其余计 1 条，即预计的真问题数
+  radius: 30.0       # 区域半径 (米): 相距不超过 radius 的问题算同一区域，热力图的扩散范围约为 radius
+  top: 10            # 最多标注几个区域 (至少有 2 条问题才算)
+
 # 检查阈值
 turn_angle: 30.0         # 判定为弯道的最小航向变化 (度)
 turn_window: 30.0        # 计算航向变化的最大弧长窗口 (米)
@@ -22,11 +30,14 @@ min_overlap_area: 1.0    # 判定为重叠的最小面积 (m²)
 ignore_isolated_turns: true   # true: 弯道若不与其他 lane 交叉 / 汇入 (分叉不算)，不检查 turn_direction
 straight_as_turn_light: true  # true: straight 算作转向灯，只检查弯道和与其他 lane 相交的直行 lanelet 是否设置了 turn_direction (left/right/straight 均可)，不检查方向
                               # false: 检查方向是否与几何一致 (弯道标 straight 或方向相反报警，直行 lanelet 不要求标 straight)
-only_check_AOI: true          # true: 只检查完全位于地图 AOI (type=detection_area, subtype=AOI) 内的 lanelet；地图中没有 AOI 时不做任何检查
+only_check_AOI: false          # true: 只检查完全位于地图 AOI (type=detection_area, subtype=AOI) 内的 lanelet；地图中没有 AOI 时不做任何检查
 
-autoware_checking: true       # true: 同时运行 utils/validate_autoware_map.py (需要先 source ROS) 并合并结果:
+autoware_checking: false       # true: 同时运行 utils/validate_autoware_map.py (需要先 source ROS) 并合并结果:
                               #   其 turn_direction 结果合并到检查 1 (同一 lanelet 只报告一次)，其余在检查 3 中报告
 
 Using_LR: true                # true: 用 logistic regression 模型 (model_file) 给缺少 turn_direction / right_of_way 的 WARNING 打分，
                               #   输出 [WARNING p=0.93]，p 为该告警是真问题 (之后会被地图团队修复) 的概率，各检查中按 p 从大到小输出；
                               #   需要先运行 build_dataset.py 和 train_model.py 生成模型，详见 README.md
+
+isShow: true                  # true: 报告结束后在新窗口中弹出热力图 (可缩放、平移)，关闭窗口后程序退出；
+                              #   需要 heatmap.enabled 为 true 和图形界面 (没有时只输出提示)

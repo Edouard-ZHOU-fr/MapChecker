@@ -10,12 +10,14 @@ Lanelet2 地图检查工具：找出地图中缺少 `turn_direction`（转向灯
 | 2. right_of_way | 交叉 / 汇入的 lanelet 对是否有 `right_of_way` 规则元素；已有的 `right_of_way` 是否被优先 lanelet 引用、两条 lanelet 是否真的重叠（完全不重叠时输出 ERROR） |
 | 3. Autoware（`autoware_checking: true`） | 运行 [utils/validate_autoware_map.py](utils/validate_autoware_map.py)（`autoware_lanelet2_validation` 的 Python 版）：地图加载错误、节点高度 `ele`、红绿灯、路由图中有冲突的 lanelet 的 `turn_direction`。其中 `turn_direction` 的结果合并到检查 1，同一 lanelet 只报告一次 |
 | LR 打分（`Using_LR: true`） | 给检查 1、2 中缺少 `turn_direction` / `right_of_way` 的告警打分 `[WARNING p=0.77]`，并按分数从高到低输出，见 [告警打分](#告警打分-using_lr) |
+| 热力图（`heatmap.enabled: true`） | 列出问题频发的区域，并生成热力图：按问题密度从蓝（少）到红（多）给地图着色，见 [问题热力图](#问题热力图-heatmap) |
 
 ## 依赖
 
 | 用途 | 需要 |
 |---|---|
 | 检查 1、2，LR 打分 | Python 3.10+、`numpy`、`PyYAML` |
+| 热力图 | `matplotlib` |
 | 检查 3（Autoware） | ROS 2 Humble 和 `autoware_lanelet2_extension_python`，运行前先 source：<br>`source /opt/ros/humble/setup.bash`<br>`source ~/ros/ad_ros2_ws/install/setup.bash` |
 | 训练打分模型 | `scikit-learn`（及其依赖 `scipy`）、`git`（只有 `build_dataset.py` 和 `train_model.py` 需要）；`config/dataset.yaml` 中 `autoware_checking: true` 时还需要 source ROS |
 
@@ -45,6 +47,8 @@ python3 check_lanelet_map.py --no-autoware-checking   # 没有 ROS 环境时
 | `--ignore-file FILE` | `ignore_file` |
 | `--[no-]using-lr` | `Using_LR` |
 | `--model-file FILE` | `model_file` |
+| `--[no-]heatmap` | `heatmap.enabled` |
+| `--[no-]show-heatmap` | `isShow` |
 | `--no-color` | 不输出颜色 |
 
 ## 配置 `config/config.yaml`
@@ -57,6 +61,9 @@ python3 check_lanelet_map.py --no-autoware-checking   # 没有 ROS 环境时
 | `ignore_file` | `config/ignore.yaml` | 手动忽略的 lanelet，文件不存在时不忽略 |
 | `model_file` | `config/model.yaml` | 告警打分模型，`Using_LR: true` 时使用 |
 | `log.enabled` / `log.dir` | `false` / `logs` | 终端输出的同时写入日志 `logs/map_check_YYYYmmdd_HHMMSS.log` |
+| `heatmap.enabled` | `false` | `true`：在报告末尾列出问题频发的区域，并在 `log.dir` 生成同名的热力图 `map_check_YYYYmmdd_HHMMSS.png`，需要 matplotlib |
+| `heatmap.radius` | `30.0` | 区域半径（米）：相距不超过 `radius` 的问题算同一区域，热力图的扩散范围约为 `radius` |
+| `heatmap.top` | `10` | 最多标注几个区域（至少有 2 条问题才算） |
 | `turn_angle` | `30.0` | 判定为弯道的最小航向变化（度） |
 | `turn_window` | `30.0` | 计算航向变化的最大弧长窗口（米），长 lanelet 上的缓弯不算弯道 |
 | `min_overlap_area` | `1.0` | 判定两条 lanelet 重叠的最小面积（m²） |
@@ -64,9 +71,10 @@ python3 check_lanelet_map.py --no-autoware-checking   # 没有 ROS 环境时
 | `straight_as_turn_light` | `true` | `true`：`straight` 也算设置了转向灯，弯道和相交的直行 lanelet 都必须设置 `turn_direction`，不检查方向<br>`false`：检查方向与几何是否一致，直行 lanelet 不要求 `straight` |
 | `only_check_AOI` | `false` | `true`：只检查完全位于地图 AOI（`subtype=AOI` 的闭合 way）内的 lanelet；地图中没有 AOI 时检查整张地图 |
 | `autoware_checking` | `false` | `true`：运行检查 3，需要 ROS |
+| `isShow` | `false` | `true`：报告结束后弹出热力图窗口（可缩放、平移），关闭窗口后程序退出；只在 `heatmap.enabled: true` 时有效，没有图形界面（如 ssh）时只输出提示 |
 | `Using_LR` | `false` | `true`：用 `model_file` 给告警打分，各检查中按分数从高到低输出；模型文件不存在时报错 |
 
-默认值是配置文件中缺少该项时使用的值；仓库里的 `config/config.yaml` 打开了 `log`、`ignore_isolated_turns`、`only_check_AOI`、`autoware_checking` 和 `Using_LR`。
+默认值是配置文件中缺少该项时使用的值；仓库里的 `config/config.yaml` 打开了 `log`、`heatmap`、`ignore_isolated_turns`、`only_check_AOI`、`autoware_checking` 和 `Using_LR`。
 
 ## 忽略列表 `config/ignore.yaml`
 
@@ -86,7 +94,7 @@ autoware:       []                            # 只在检查 3 中忽略 (该 la
 - `[WARNING]`（黄色）：需要确认的问题；`[ERROR]`（红色）：确定有错，例如 `right_of_way` 的两条 lanelet 完全不重叠、地图加载错误。
 - 检查 1 按 lanelet id 顺序输出。检查 2 先输出已有 `right_of_way` 规则元素本身的问题，再输出缺少 `right_of_way` 的告警，按区域（通常是一个路口）分组，每组给出中心坐标和涉及的 lanelet。
 - `Using_LR: true` 时顺序不同，见 [输出顺序](#输出顺序)。
-- 末尾的 Summary 列出各检查项的告警数，Ignored lanelets 列出忽略列表的使用情况（不在地图中、在 AOI 外、屏蔽了几条）。
+- 末尾的 Summary 列出各检查项的告警数，Hotspots 列出问题频发的区域（`heatmap.enabled: true` 时，见 [问题热力图](#问题热力图-heatmap)），Ignored lanelets 列出忽略列表的使用情况（不在地图中、在 AOI 外、屏蔽了几条）。
 - 退出码：`0` 没有问题，`1` 有未忽略的 WARNING / ERROR，`2` 参数或环境错误。可以用于 CI。
 
 Autoware 检查也可以单独运行（需要 source ROS）：
@@ -94,6 +102,29 @@ Autoware 检查也可以单独运行（需要 source ROS）：
 ```bash
 python3 utils/validate_autoware_map.py lanelet2_map.osm
 ```
+
+## 问题热力图 (`heatmap`)
+
+一张地图的告警常常集中在几个路口。打开 `heatmap.enabled` 后，报告末尾会列出问题最多的区域，并在日志目录生成与日志同名的 `.png`，方便先处理问题最集中的地方：
+
+```
+=== Hotspots (at least 2 issues within 30 m) ===
+#1  center (67932.7, 6497.8): 16 issues (turn_direction 8, right_of_way 8), lanelets: 3973 4060 4081 4095 4102 4107 4134 4167 4202 4313
+#2  center (68200.6, 6151.5): 13 issues (right_of_way 9, turn_direction 4), lanelets: 2690 3668 3676 3690 3698 5595 6165 6811 6866
+...
+Heatmap: .../logs/map_check_20261016_093357.png
+```
+
+- **位置**：检查 1 的告警取 lanelet 中心线的中点（即日志中的 `middle`），检查 2 缺少 `right_of_way` 的告警取重叠区的中心，其他告警取相关 lanelet 中点的平均；与 lanelet 无关的告警（节点缺少高度、地图加载错误）不参与。被忽略的告警不参与。
+- **颜色**：高斯核密度（sigma = `radius / 2`），数值约为附近的问题数。只有 1 条孤立问题的地方为蓝色，问题越密集越接近红色；没有问题的地方透明，露出地图。
+- **区域**：每次取 `radius` 米内剩余问题最多的位置作为一个区域，区域内的问题不再计入之后的区域，直到找到 `heatmap.top` 个区域或剩下的位置都不足 2 条问题。图中用圆圈和 `#排名 问题数` 标注，与日志中的编号一致。
+- **按 p 加权**（`Using_LR: true`）：有分数的告警计 p 条，没有分数的告警和 ERROR 计 1 条，颜色、区域的判定和排名都用加权后的条数，即预计的真问题数；模型认为多半是误报的区域颜色更淡、排名靠后或不再列出。日志中同时给出条数和加权值，图中标注加权值：
+  ```
+  === Hotspots (at least 2 p-weighted issues within 30 m) ===
+  #1  center (67936.5, 6494.3): 14 issues, p-weighted 9.4 (right_of_way 9, turn_direction 5), lanelets: 3973 3980 4060 4107 4134 4167 4202 4313
+  ```
+- **弹出窗口**：`isShow: true` 时，报告和日志写完后弹出热力图窗口，可以用工具栏缩放到某个区域查看；关闭窗口后程序退出，退出码不变。
+- **范围**：`only_check_AOI: true` 时只画 AOI 的范围（虚线为 AOI 边界），否则画整张地图。问题点按检查项用不同形状标出：圆形 turn_direction、方形 right_of_way、三角形 autoware。
 
 ## 告警打分 (`Using_LR`)
 
@@ -244,6 +275,7 @@ MapChecker/
     ignore.py                 忽略列表
     config.py                 读取 config.yaml
     printer.py                终端 / 日志输出
+    heatmap.py                问题热力图和问题频发的区域
   data/                       build_dataset.py 的输出 (不提交)
-  logs/                       日志 (不提交)
+  logs/                       日志和热力图 (不提交)
 ```
