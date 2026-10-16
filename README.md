@@ -19,7 +19,7 @@ Lanelet2 地图检查工具：找出地图中缺少 `turn_direction`（转向灯
 | 检查 1、2，LR 打分 | Python 3.10+、`numpy`、`PyYAML` |
 | 热力图 | `matplotlib` |
 | 检查 3（Autoware） | ROS 2 Humble 和 `autoware_lanelet2_extension_python`，运行前先 source：<br>`source /opt/ros/humble/setup.bash`<br>`source ~/ros/ad_ros2_ws/install/setup.bash` |
-| 训练打分模型 | `scikit-learn`（及其依赖 `scipy`）、`git`（只有 `build_dataset.py` 和 `train_model.py` 需要）；`config/dataset.yaml` 中 `autoware_checking: true` 时还需要 source ROS |
+| 训练打分模型 | `scikit-learn`（及其依赖 `scipy`）、`git`（只有 `train_model.py` 需要）；`config/dataset.yaml` 中 `autoware_checking: true` 时还需要 source ROS |
 
 ## 快速开始
 
@@ -168,19 +168,16 @@ Heatmap: .../logs/map_check_20261016_093357.png
 只由 Autoware 检出的 `turn_direction` 告警（例如分叉处的 lanelet，Autoware 的路由图把分叉也算作冲突）和几何检查的告警很不一样，必须在训练数据中出现，模型才能正确打分。所以生成训练数据时默认运行 Autoware 检查，需要先 source ROS；关闭时检查中不给这类告警打分（见 [计算方法](#计算方法)）。
 
 1. 在 [config/dataset.yaml](config/dataset.yaml) 中列出地图仓库，以及该仓库对应的 ignore 文件（如果有）。
-2. 生成训练数据，输出到 `data/turn_direction.csv` 和 `data/right_of_way.csv`（已加入 `.gitignore`）：
+2. 生成训练数据并训练、评估，生成 `config/model.yaml`：
 
    ```bash
-   python3 build_dataset.py
+   python3 train_model.py                # --C 0.1 可以加强正则化
+   python3 train_model.py --skip-build   # 不重新生成训练数据，直接用已有的 data/ 训练（例如只调整 --C）
    ```
 
-3. 训练并评估，生成 `config/model.yaml`：
+   `train_model.py` 先用 [utils/build_dataset.py](utils/build_dataset.py) 重放地图仓库的历史，生成训练数据 `data/turn_direction.csv` 和 `data/right_of_way.csv`（已加入 `.gitignore`），再用 [utils/tranning.py](utils/tranning.py) 训练。
 
-   ```bash
-   python3 train_model.py            # --C 0.1 可以加强正则化
-   ```
-
-地图仓库有新的提交、ignore 文件更新了，或者修改了 [utils/features.py](utils/features.py) 中的特征后，重新运行这两步即可。检查阈值（`turn_angle` 等）使用 `config/config.yaml` 中的设置，修改阈值后也应重新训练。
+地图仓库有新的提交、ignore 文件更新了，或者修改了 [utils/features.py](utils/features.py) 中的特征后，重新运行 `train_model.py` 即可。检查阈值（`turn_angle` 等）使用 `config/config.yaml` 中的设置，修改阈值后也应重新训练。
 
 ### 标注规则
 
@@ -211,7 +208,7 @@ Heatmap: .../logs/map_check_20261016_093357.png
 - 有红绿灯的路口（`traffic_light`）的告警多为误报；
 - 没有路口（`isolated`，例如分叉）的告警多为误报。
 
-这类特征列在 [utils/features.py](utils/features.py) 的 `NEGATIVE_FEATURES` 中，训练时系数限制为 ≤ 0：**方向由经验决定，降低多少由数据决定**。数据不支持时系数会停在 0（`train_model.py` 输出 `at the bound`），即不起作用，但不会反过来提高 p。sklearn 的 `LogisticRegression` 不支持限制系数，`train_model.py` 用 scipy 的 L-BFGS-B 求解同样的目标函数，不加限制时结果与 sklearn 一致。
+这类特征列在 [utils/features.py](utils/features.py) 的 `NEGATIVE_FEATURES` 中，训练时系数限制为 ≤ 0：**方向由经验决定，降低多少由数据决定**。数据不支持时系数会停在 0（`train_model.py` 输出 `at the bound`），即不起作用，但不会反过来提高 p。sklearn 的 `LogisticRegression` 不支持限制系数，训练时（`utils/tranning.py`）用 scipy 的 L-BFGS-B 求解同样的目标函数，不加限制时结果与 sklearn 一致。
 
 把经验告诉模型有三种方法，效果不同：
 
@@ -255,12 +252,11 @@ Heatmap: .../logs/map_check_20261016_093357.png
 ```
 MapChecker/
   check_lanelet_map.py        入口
-  build_dataset.py            从地图仓库的 git 历史生成训练数据
-  train_model.py              训练 logistic regression，生成 config/model.yaml
+  train_model.py              生成训练数据并训练 logistic regression，生成 config/model.yaml
   config/
     config.yaml               检查配置
     ignore.yaml               手动忽略的 lanelet
-    dataset.yaml              build_dataset.py 的配置 (地图仓库列表、标注规则)
+    dataset.yaml              train_model.py 的配置 (地图仓库列表、标注规则)
     model.yaml                告警打分模型 (train_model.py 生成)
   utils/
     lanelet_map.py            读取 Lanelet2 OSM 地图
@@ -276,6 +272,8 @@ MapChecker/
     config.py                 读取 config.yaml
     printer.py                终端 / 日志输出
     heatmap.py                问题热力图和问题频发的区域
-  data/                       build_dataset.py 的输出 (不提交)
+    build_dataset.py          从地图仓库的 git 历史生成训练数据
+    tranning.py               训练 logistic regression
+  data/                       训练数据 (不提交)
   logs/                       日志和热力图 (不提交)
 ```

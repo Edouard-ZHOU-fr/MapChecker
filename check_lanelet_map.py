@@ -31,9 +31,8 @@ Using_LR 为 true 时热力图和区域按 p 加权 (有分数的 WARNING 计 p 
     config/config.yaml     配置 (其中的相对路径以 MapChecker/ 为基准)
     config/ignore.yaml     手动忽略的 lanelet
     config/model.yaml      告警打分模型 (train_model.py 生成)
-    utils/                 地图读取、几何、拓扑、各项检查、输出、特征与模型
-    build_dataset.py       从地图仓库的 git 历史生成训练数据
-    train_model.py         训练 logistic regression，生成 config/model.yaml
+    utils/                 地图读取、几何、拓扑、各项检查、输出、特征与模型、训练数据与训练
+    train_model.py         从地图仓库的 git 历史生成训练数据并训练 logistic regression，生成 config/model.yaml
 """
 
 import argparse
@@ -96,7 +95,7 @@ def run(map_path, opts, ignore_entries, ignore_path, out, validate_autoware=None
 
 
 def run_checks(lanelets, reg_elems, aois, opts, out, autoware=None):
-    """检查 1~3，返回 AOI 内的 lanelet id (None 表示整张地图)；build_dataset.py 也调用它"""
+    """检查 1~3，返回 AOI 内的 lanelet id (None 表示整张地图)；utils/build_dataset.py 也调用它"""
     autoware_td = autoware.turn_direction if autoware else None
     # Autoware 报告的 lanelet 即使 subtype 不在 VEHICLE_SUBTYPES 中也参与检查 1
     vehicle = {k: v for k, v in lanelets.items() if v.is_vehicle or k in (autoware_td or {})}
@@ -190,7 +189,7 @@ def main():
         model_path = os.path.abspath(args.model_file) if args.model_file else cfg["model_file"]
         if not model_path or not os.path.isfile(model_path):
             parser.error(f"Using_LR requires a model file (not found: {model_path}), "
-                         f"run build_dataset.py and train_model.py first, or run with --no-using-lr")
+                         f"run train_model.py first, or run with --no-using-lr")
         try:
             model = Model(model_path)
         except (ValueError, KeyError, yaml.YAMLError) as e:

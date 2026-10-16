@@ -17,7 +17,7 @@ class Model:
         for category, m in self.params.items():
             if list(m["features"]) != list(FEATURES[category]):
                 raise ValueError(f"{path}: features of '{category}' differ from utils/features.py, "
-                                 f"run build_dataset.py and train_model.py again")
+                                 f"run train_model.py again")
 
     def score(self, category, features):
         """

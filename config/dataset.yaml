@@ -1,4 +1,4 @@
-# build_dataset.py 的配置: 从地图仓库的 git 历史生成 train_model.py 的训练数据
+# train_model.py 的配置: 从地图仓库的 git 历史生成训练数据 (utils/build_dataset.py)
 # 相对路径以 MapChecker/ 为基准；检查阈值使用 config.yaml 中的设置
 #
 # 对每个仓库，按时间顺序在地图的每个提交版本 (以及未提交的修改) 上运行检查 1 和检查 2，跟踪每条告警:
@@ -26,7 +26,7 @@ repos:
   - path: ~/milla_git_ws/Maps/larochelle_map_planning
   - path: ~/milla_git_ws/Maps/le_plessis_trevise_map_planning
   - path: ~/milla_git_ws/Maps/le_plessis_trevise_q2_map_planning
-  - path: ~/milla_git_ws/Maps/sqy_map_planning
+  # - path: ~/milla_git_ws/Maps/sqy_map_planning
   - path: ~/milla_git_ws/Maps/utac_map_planning
   - path: ~/milla_git_ws/Maps/antibes_map_planning
   - path: ~/milla_git_ws/Maps/louvois_map_planning

@@ -1,28 +1,21 @@
-#!/usr/bin/env python3
 """
-从地图仓库的 git 历史生成告警打分模型 (logistic regression) 的训练数据
+从地图仓库的 git 历史生成告警打分模型 (logistic regression) 的训练数据，由 train_model.py 调用
 
 在每个仓库地图的每个历史版本上运行检查 1 和检查 2 (阈值同 config/config.yaml)，
 跟踪每条缺少 turn_direction / right_of_way 的告警之后是被修复、被忽略还是一直保留，据此标注 label。
 标注规则和仓库列表见 config/dataset.yaml。dataset.yaml 中 autoware_checking 为 true 时同时运行 Autoware 检查，
 只由 Autoware 检出的 turn_direction 告警也作为训练样本，此时需要先 source ROS (见 utils/validate_autoware_map.py)。
 
-用法:
-  python3 build_dataset.py                  # 使用 config/dataset.yaml
-  python3 build_dataset.py -c other.yaml
-
 输出 (output_dir 下):
   turn_direction.csv, right_of_way.csv   每行一条告警: 仓库、key (lanelet id，right_of_way 为 "a/b")、
                                          首次 / 最后出现的版本、label (1 / 0 / 空)、标注原因、特征 (取最后出现的版本)
-之后运行 train_model.py 训练模型。
+之后由 utils/tranning.py 训练模型。
 """
 
-import argparse
 import csv
 import io
 import os
 import subprocess
-import sys
 import tempfile
 from collections import Counter
 from concurrent.futures import ProcessPoolExecutor
@@ -147,13 +140,16 @@ def write_csv(path, category, samples):
                             s["label"], s["reason"], *(round(s["features"][x], 4) for x in names)])
 
 
-def main():
-    parser = argparse.ArgumentParser(description="Build the training data of train_model.py from map git histories")
-    parser.add_argument("-c", "--config", default=DEFAULT_DATASET_CONFIG, help="default: config/dataset.yaml")
-    args = parser.parse_args()
+def load_dataset_config(path):
+    """读取 dataset.yaml，返回 (配置, 训练数据的输出目录)"""
+    with open(path, encoding="utf-8") as f:
+        ds = yaml.safe_load(f) or {}
+    return ds, resolve(ds.get("output_dir", "data"))
 
-    with open(args.config, encoding="utf-8") as f:
-        ds = yaml.safe_load(f)
+
+def build_dataset(config_path=DEFAULT_DATASET_CONFIG):
+    """按 dataset.yaml 生成训练数据，返回输出目录；需要 ROS 但无法导入时抛出 RuntimeError"""
+    ds, out_dir = load_dataset_config(config_path)
     cfg = load_config(DEFAULT_CONFIG_PATH, BASE_DIR)
     opts = {k: cfg[k] for k in CHECK_OPTS}
     map_rel = ds.get("map", "lanelet2_map.osm")
@@ -162,7 +158,7 @@ def main():
         try:
             import utils.validate_autoware_map  # noqa: F401
         except ImportError as e:
-            sys.exit(f"autoware_checking in {args.config} requires ROS ({e})")
+            raise RuntimeError(f"autoware_checking in {config_path} requires ROS ({e})") from e
 
     repos = []  # (名称, 路径, 版本列表, 忽略列表)
     for r in ds["repos"]:
@@ -193,14 +189,10 @@ def main():
                 print(f"{name:36s} {len(results):3d} versions  {category:15s} "
                       + "  ".join(f"{k} {c[k]:4d}" for k in ("fixed", "ignored", "survived", "pending", "changed", "removed")))
 
-    out_dir = resolve(ds.get("output_dir", "data"))
     os.makedirs(out_dir, exist_ok=True)
     for category in FEATURES:
         path = os.path.join(out_dir, f"{category}.csv")
         write_csv(path, category, samples)
         labels = Counter(s["label"] for s in samples if s["category"] == category)
         print(f"{category}: {labels[1]} label 1, {labels[0]} label 0, {labels['']} unlabeled -> {path}")
-
-
-if __name__ == "__main__":
-    sys.exit(main())
+    return out_dir

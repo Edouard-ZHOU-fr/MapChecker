@@ -1,4 +1,4 @@
-"""告警的特征 (logistic regression 打分用)，check_lanelet_map.py 和 build_dataset.py 共用"""
+"""告警的特征 (logistic regression 打分用)，check_lanelet_map.py 和 utils/build_dataset.py 共用"""
 
 import math
 from collections import defaultdict
@@ -8,7 +8,7 @@ import numpy as np
 from .geometry import arc_length, centerline, centerline_enters, max_heading_change
 from .topology import build_topology
 
-# 特征名及其在模型中的顺序；修改后需要重新运行 build_dataset.py 和 train_model.py
+# 特征名及其在模型中的顺序；修改后需要重新运行 train_model.py
 # 节点高度差试过后去掉了: 它随地图版本的处理方式 (如高度平滑) 而变，模型学到的是 "哪个版本" 而不是 "哪条告警"
 FEATURES = {
     "turn_direction": (
@@ -30,7 +30,7 @@ FEATURES = {
     ),
 }
 
-# 领域知识: 这些特征的值越大，告警越可能是误报。train_model.py 训练时把它们的系数限制为 <= 0，
+# 领域知识: 这些特征的值越大，告警越可能是误报。训练时 (utils/tranning.py) 把它们的系数限制为 <= 0，
 # 方向由这里决定，降低多少由数据决定 (数据不支持时系数为 0，即不起作用，不会反过来提高 p)
 NEGATIVE_FEATURES = {
     "turn_direction": (
