@@ -47,14 +47,14 @@ def check_right_of_way(lanelets, reg_elems, overlaps, aoi_ids, opts, out):
         center = np.mean([it[3] for it in items], axis=0)
         out.info(f"-- Area {k}, center {fmt_xy(center)}, lanelets: {' '.join(ids)}")
         if not out.model:
-            for a_id, b_id, text, _, features in items:
-                out.warn("right_of_way", f"lanelet {a_id} / {b_id}: {text}", (a_id, b_id), features)
+            for a_id, b_id, text, pos, features in items:
+                out.warn("right_of_way", f"lanelet {a_id} / {b_id}: {text}", (a_id, b_id), features, pos)
     if out.model:
         # 有模型时先列出所有区域，再把所有区域的告警一起按 p 从大到小输出，每条注明所在区域
         out.hold()
         for k, items in enumerate(groups, 1):
-            for a_id, b_id, text, _, features in items:
-                out.warn("right_of_way", f"lanelet {a_id} / {b_id} (area {k}): {text}", (a_id, b_id), features)
+            for a_id, b_id, text, pos, features in items:
+                out.warn("right_of_way", f"lanelet {a_id} / {b_id} (area {k}): {text}", (a_id, b_id), features, pos)
         out.flush()
 
     out.info(f"{n_conflicts} overlapping lanelet pairs detected: {n_covered} with right_of_way, "

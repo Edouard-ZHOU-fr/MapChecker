@@ -21,6 +21,8 @@ class Printer:
         self.ignore = ignore or {}          # {检查项: {lanelet id: 原因}}
         self.model = model                  # utils.model.Model，给带特征的 WARNING 打分
         self.issues = []                    # 输出了的带特征的 WARNING (Issue)
+        self.located = []                   # 输出了的 WARNING / ERROR 的 (检查项, lanelet ids, 坐标或 None, 权重)，用于热力图；
+                                            #   权重: 有分数的 WARNING 为 p，其余为 1
         self.count = defaultdict(int)       # WARNING 数量
         self.errors = defaultdict(int)      # ERROR 数量
         self.suppressed = defaultdict(int)  # (检查项, lanelet id) -> 因忽略而未输出的条数
@@ -42,8 +44,11 @@ class Printer:
         self._print("")
         self._print(f"=== {text} ===", BOLD)
 
-    def warn(self, category, text, ids=(), features=None):
-        """features: 该告警的特征 (utils/features.py)，有模型时输出 [WARNING p=...]"""
+    def warn(self, category, text, ids=(), features=None, pos=None):
+        """
+        features: 该告警的特征 (utils/features.py)，有模型时输出 [WARNING p=...]
+        pos:      问题的坐标，用于热力图；None 时取 ids 中 lanelet 的位置
+        """
         if self.is_ignored(category, *ids):
             return
         self.count[category] += 1
@@ -51,6 +56,7 @@ class Printer:
         if features is not None:
             p = self.model.score(category, features) if self.model else None
             self.issues.append(Issue(category, tuple(ids), features, p))
+        self.located.append((category, tuple(ids), pos, 1.0 if p is None else p))
         if p is None:
             self._print(f"[WARNING] {text}", YELLOW)
         elif self._held is not None:
@@ -67,9 +73,10 @@ class Printer:
         for _, line in sorted(held, key=lambda t: -t[0]):  # 稳定排序，p 相同时保持原来的顺序
             self._print(line, YELLOW)
 
-    def error(self, category, text, ids=()):
+    def error(self, category, text, ids=(), pos=None):
         if not self.is_ignored(category, *ids):
             self.errors[category] += 1
+            self.located.append((category, tuple(ids), pos, 1.0))
             self._print(f"[ERROR] {text}", RED)
 
     def ok(self, text):

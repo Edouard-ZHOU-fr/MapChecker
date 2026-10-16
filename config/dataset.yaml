@@ -13,7 +13,7 @@
 output_dir: data          # 生成 turn_direction.csv 和 right_of_way.csv
 map: lanelet2_map.osm     # 地图在仓库中的路径
 include_working_copy: true  # 地图有未提交的修改时，把工作区的版本作为最新版本
-autoware_checking: true     # true: 同时运行 Autoware 检查 (需要先 source ROS)，只由 Autoware 检出的 turn_direction 告警
+autoware_checking: false     # true: 同时运行 Autoware 检查 (需要先 source ROS)，只由 Autoware 检出的 turn_direction 告警
                             #   (例如分叉) 也作为训练样本；false 时模型没有见过这类告警，检查时不给它们打分
 min_fix_rounds: 2
 
@@ -27,5 +27,10 @@ repos:
   - path: ~/milla_git_ws/Maps/le_plessis_trevise_map_planning
   - path: ~/milla_git_ws/Maps/le_plessis_trevise_q2_map_planning
   - path: ~/milla_git_ws/Maps/sqy_map_planning
-  - path: ~/milla_git_ws/Maps/utac_autoroute_map_planning
-  - path: ~/milla_git_ws/Maps/velizy_base_aero_map_planning
+  - path: ~/milla_git_ws/Maps/utac_map_planning
+  - path: ~/milla_git_ws/Maps/antibes_map_planning
+  - path: ~/milla_git_ws/Maps/louvois_map_planning
+  - path: ~/milla_git_ws/Maps/saclay_map_planning
+  - path: ~/milla_git_ws/Maps/satory_map_planning
+  
+

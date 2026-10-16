@@ -8,6 +8,7 @@ import yaml
 DEFAULT_CONFIG = {
     "input": "lanelet2_map.osm",
     "log": {"enabled": False, "dir": "logs"},
+    "heatmap": {"enabled": False, "radius": 30.0, "top": 10},
     "turn_angle": 30.0,
     "turn_window": 30.0,
     "min_overlap_area": 1.0,
@@ -18,6 +19,7 @@ DEFAULT_CONFIG = {
     "only_check_AOI": False,
     "autoware_checking": False,
     "Using_LR": False,
+    "isShow": False,
 }
 
 
@@ -27,6 +29,7 @@ def load_config(path, base_dir):
         user = yaml.safe_load(f) or {}
     cfg = {**DEFAULT_CONFIG, **user}
     cfg["log"] = {**DEFAULT_CONFIG["log"], **(user.get("log") or {})}
+    cfg["heatmap"] = {**DEFAULT_CONFIG["heatmap"], **(user.get("heatmap") or {})}
 
     def resolve(p):
         return os.path.join(base_dir, os.path.expanduser(str(p)))
