@@ -21,6 +21,8 @@ Lanelet2 地图检查工具：找出地图中缺少 `turn_direction`（转向灯
 | 检查 3（Autoware） | ROS 2 Humble 和 `autoware_lanelet2_extension_python`，运行前先 source：<br>`source /opt/ros/humble/setup.bash`<br>`source ~/ros/ad_ros2_ws/install/setup.bash` |
 | 训练打分模型 | `scikit-learn`（及其依赖 `scipy`）、`git`（只有 `train_model.py` 需要）；`config/dataset.yaml` 中 `autoware_checking: true` 时还需要 source ROS |
 
+除 ROS / Autoware 外的依赖可以用 `./install.sh` 一次装好（Ubuntu 22.04）：apt 安装 `python3-pip`、`python3-tk`（热力图弹出窗口）、`git`，pip 把 `numpy`、`PyYAML`、`matplotlib`、`scipy`、`scikit-learn` 及其依赖全部安装到项目中的 `libs/`，不影响系统和用户目录；`check_lanelet_map.py` 和 `train_model.py` 启动时把 `libs/` 放到 `sys.path` 最前面。每次运行都会重新安装并整体替换 `libs/`；其中有编译好的库，只能用安装时的 Python 版本运行。`numpy` 限制为 `< 2`，以免破坏 ROS 2 Humble 的 Python 包。
+
 ## 快速开始
 
 ```bash
@@ -256,6 +258,7 @@ Heatmap: .../logs/map_check_20261016_093357.png
 MapChecker/
   check_lanelet_map.py        入口
   train_model.py              生成训练数据并训练 logistic regression，生成 config/model.yaml
+  install.sh                  安装依赖 (ROS / Autoware 除外)
   config/
     config.yaml               检查配置
     ignore.yaml               手动忽略的 lanelet
@@ -277,6 +280,7 @@ MapChecker/
     heatmap.py                问题热力图和问题频发的区域
     build_dataset.py          从地图仓库的 git 历史生成训练数据
     tranning.py               训练 logistic regression
+  libs/                       install.sh 安装的第三方库 (不提交)
   data/                       训练数据 (不提交)
   logs/                       日志和热力图 (不提交)
 ```

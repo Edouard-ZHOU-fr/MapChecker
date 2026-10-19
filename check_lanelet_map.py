@@ -33,12 +33,17 @@ Using_LR 为 true 时热力图和区域按 p 加权 (有分数的 WARNING 计 p 
     config/model.yaml      告警打分模型 (train_model.py 生成)
     utils/                 地图读取、几何、拓扑、各项检查、输出、特征与模型、训练数据与训练
     train_model.py         从地图仓库的 git 历史生成训练数据并训练 logistic regression，生成 config/model.yaml
+    libs/                  install.sh 安装的第三方库
 """
 
 import argparse
 import os
 import sys
 import time
+
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+# install.sh 把第三方库装在 libs/ 中，放在最前面，优先于系统和用户目录中的版本
+sys.path.insert(0, os.path.join(BASE_DIR, "libs"))
 
 import yaml
 
@@ -55,7 +60,6 @@ from utils.model import Model
 from utils.printer import Printer
 from utils.topology import find_overlaps
 
-BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 DEFAULT_CONFIG_PATH = os.path.join(BASE_DIR, "config", "config.yaml")
 
 
