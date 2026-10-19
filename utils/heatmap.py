@@ -1,7 +1,8 @@
 """
 问题热力图: 按问题密度从蓝 (少) 到红 (多) 给地图着色，并在图中和日志中标注问题频发的区域 (需要 matplotlib)。
 Using_LR 时按 p 加权: 有分数的 WARNING 权重为 p (真问题的概率)，没有分数的 WARNING 和 ERROR 权重为 1，
-密度和区域都按权重之和 (即预计的真问题数) 计算；没有模型时权重都为 1，即问题条数
+密度和区域都按权重之和 (即预计的真问题数) 计算；没有模型时权重都为 1，即问题条数。
+弹出的窗口中单击问题点或 lanelet 显示 lanelet 编号，见 _enable_click()
 """
 
 import time
@@ -18,11 +19,15 @@ MAX_LISTED_LANELETS = 12
 MARKERS = {"turn_direction": "o", "right_of_way": "s", "autoware": "^"}
 SAVE_DPI = 150
 SHOW_MAX_HEIGHT = 900    # 弹出窗口的最大高度 (像素)
+CLICK_PIXELS = 8         # 弹出窗口中: 离问题点多少像素以内算点中；按下和松开相距超过它算拖动 (缩放 / 平移)，不算单击
+MAX_CLICK_LINES = 8      # 一次单击最多显示几条问题
+HIGHLIGHT_COLOR = "#f08c00"
 
 
 def issue_points(out, lanelets):
     """
-    Printer 记录的 WARNING / ERROR 的位置，返回 (坐标 [N, 2], [(检查项, lanelet ids)], 权重 [N])。
+    Printer 记录的 WARNING / ERROR 的位置，返回 (坐标 [N, 2], [(检查项, lanelet ids, p 或 None, 输出的那一行)], 权重 [N])，
+    权重: 有分数的 WARNING 为 p，其余为 1。
     没有给出坐标的取相关 lanelet 中心线中点的平均；与 lanelet 无关的 (如节点缺少高度、地图加载错误) 不参与
     """
     middles = {}
@@ -34,15 +39,15 @@ def issue_points(out, lanelets):
         return middles[lid]
 
     pts, items, weights = [], [], []
-    for category, ids, pos, weight in out.located:
+    for category, ids, pos, p, line in out.located:
         if pos is None:
             known = [i for i in ids if i in lanelets]
             if not known:
                 continue
             pos = np.mean([middle(i) for i in known], axis=0)
         pts.append(pos)
-        items.append((category, ids))
-        weights.append(weight)
+        items.append((category, ids, p, line))
+        weights.append(1.0 if p is None else p)
     return np.array(pts, dtype=float).reshape(-1, 2), items, np.array(weights, dtype=float)
 
 
@@ -125,7 +130,7 @@ def show_heatmap():
     if matplotlib.get_backend().lower() in ("agg", "pdf", "pgf", "ps", "svg", "cairo", "template"):
         print(f"Heatmap not shown: no display available (matplotlib backend {matplotlib.get_backend()})")
         return
-    print("Showing heatmap, close the window to exit")
+    print("Showing heatmap (click an issue or a lanelet to show its id), close the window to exit")
     plt.show()
 
 
@@ -146,7 +151,7 @@ def _save_image(path, lanelets, aois, pts, items, weights, weighted, spots, radi
         import matplotlib.pyplot as plt
         fig = plt.figure(figsize=figsize, dpi=min(100.0, SHOW_MAX_HEIGHT / figsize[1]), constrained_layout=True)
         fig.canvas.manager.set_window_title(f"MapChecker heatmap: {map_name}")
-        _draw(fig, *args)
+        _enable_click(fig, _draw(fig, *args), lanelets, pts, items)
 
 
 def _draw(fig, lanelets, aois, pts, items, weights, weighted, spots, radius, map_name, extent, dens, img_extent):
@@ -176,7 +181,7 @@ def _draw(fig, lanelets, aois, pts, items, weights, weighted, spots, radius, map
     ax.imshow(rgba, origin="lower", extent=img_extent, interpolation="bilinear", zorder=3)
 
     for category, marker in MARKERS.items():
-        sel = [i for i, (c, _) in enumerate(items) if c == category]
+        sel = [i for i, item in enumerate(items) if item[0] == category]
         if sel:
             ax.scatter(pts[sel, 0], pts[sel, 1], s=14, marker=marker, facecolors="white", edgecolors="#222222",
                        linewidths=0.6, zorder=4, label=f"{category} ({len(sel)})")
@@ -207,3 +212,64 @@ def _draw(fig, lanelets, aois, pts, items, weights, weighted, spots, radius, map
     bar = fig.colorbar(ScalarMappable(norm, cmap), ax=ax, shrink=0.6, pad=0.01)
     bar.set_label(f"{unit} nearby (Gaussian weighted, sigma = {radius / 2:.0f} m)", color="#6b6b66")
     bar.ax.tick_params(colors="#6b6b66", labelsize=8)
+    return ax
+
+
+def _enable_click(fig, ax, lanelets, pts, items):
+    """
+    弹出窗口中单击 (缩放 / 平移模式下也可以，拖动不算) 显示 lanelet 编号，并把相关 lanelet 用橙色描边:
+      - 点中问题点: 显示该处所有问题的 lanelet、检查项和 p，并在终端输出这些问题在日志中的那一行
+      - 否则: 显示点击处的 lanelet (重叠处可能有多条)
+      - 点空白处: 隐藏
+    """
+    from matplotlib.collections import PolyCollection
+    from matplotlib.path import Path
+
+    label = ax.annotate("", (0, 0), xytext=(12, 12), textcoords="offset points", fontsize=9, color="#1f1f1f",
+                        zorder=8, visible=False,
+                        bbox=dict(boxstyle="round,pad=0.3", facecolor="white", edgecolor="#1f1f1f", alpha=0.95))
+    highlight = PolyCollection([], facecolors="none", edgecolors=HIGHLIGHT_COLOR, linewidths=2.0, zorder=7)
+    ax.add_collection(highlight)
+    fig.text(0.005, 0.005, "click an issue or a lanelet to show its id", fontsize=8, color="#6b6b66")
+    paths = {lid: Path(ll.polygon) for lid, ll in lanelets.items()}
+    pressed = {}
+
+    def on_press(event):
+        pressed["xy"] = (event.x, event.y)
+
+    def on_release(event):
+        start = pressed.pop("xy", None)
+        if (event.inaxes is not ax or event.button != 1 or start is None
+                or np.hypot(event.x - start[0], event.y - start[1]) > CLICK_PIXELS):
+            return
+        dist = np.linalg.norm(ax.transData.transform(pts) - (event.x, event.y), axis=1)
+        hits = [i for i in np.argsort(dist) if dist[i] <= CLICK_PIXELS]
+        if hits:
+            xy = pts[hits[0]]
+            ids = sorted({i for h in hits for i in items[h][1]}, key=int)
+            lines = [f"lanelet {' / '.join(items[h][1]) or '-'}  {items[h][0]}"
+                     + ("" if items[h][2] is None else f"  p={items[h][2]:.2f}") for h in hits[:MAX_CLICK_LINES]]
+            if len(hits) > MAX_CLICK_LINES:
+                lines.append(f"... (+{len(hits) - MAX_CLICK_LINES})")
+            print("\n".join(items[h][3] for h in hits))
+        else:
+            xy = (event.xdata, event.ydata)
+            ids = sorted((lid for lid, path in paths.items() if path.contains_point(xy)), key=int)
+            lines = [f"lanelet {', '.join(ids)}"] if ids else []
+            if ids:
+                print(lines[0])
+        highlight.set_verts([lanelets[i].polygon for i in ids if i in lanelets])
+        label.set_visible(bool(lines))
+        if lines:
+            # 文字放在点击处朝向图中心的一侧，避免超出图的范围
+            box = ax.bbox
+            right, top = event.x > (box.x0 + box.x1) / 2, event.y > (box.y0 + box.y1) / 2
+            label.xy = xy
+            label.xyann = (-12 if right else 12, -12 if top else 12)
+            label.set_horizontalalignment("right" if right else "left")
+            label.set_verticalalignment("top" if top else "bottom")
+            label.set_text("\n".join(lines))
+        fig.canvas.draw_idle()
+
+    fig.canvas.mpl_connect("button_press_event", on_press)
+    fig.canvas.mpl_connect("button_release_event", on_release)

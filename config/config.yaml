@@ -39,5 +39,5 @@ Using_LR: true                # true: 用 logistic regression 模型 (model_file
                               #   输出 [WARNING p=0.93]，p 为该告警是真问题 (之后会被地图团队修复) 的概率，各检查中按 p 从大到小输出；
                               #   需要先运行 train_model.py 生成模型，详见 README.md
 
-isShow: true                  # true: 报告结束后在新窗口中弹出热力图 (可缩放、平移)，关闭窗口后程序退出；
+isShow: true                  # true: 报告结束后在新窗口中弹出热力图 (可缩放、平移，单击问题点或 lanelet 显示 lanelet 编号)，关闭窗口后程序退出；
                               #   需要 heatmap.enabled 为 true 和图形界面 (没有时只输出提示)

@@ -124,6 +124,9 @@ Heatmap: .../logs/map_check_20261016_093357.png
   #1  center (67936.5, 6494.3): 14 issues, p-weighted 9.4 (right_of_way 9, turn_direction 5), lanelets: 3973 3980 4060 4107 4134 4167 4202 4313
   ```
 - **弹出窗口**：`isShow: true` 时，报告和日志写完后弹出热力图窗口，可以用工具栏缩放到某个区域查看；关闭窗口后程序退出，退出码不变。
+  - 单击问题点：显示该处问题的 lanelet 编号、检查项和 p（同一位置有多条时都列出），相关 lanelet 用橙色描边，终端同时输出这些问题在日志中的那一行（方便复制）。
+  - 单击其他位置：显示点击处的 lanelet 编号（重叠处可能有多条）；单击空白处隐藏。
+  - 缩放 / 平移模式下也可以直接单击，拖动不算单击。
 - **范围**：`only_check_AOI: true` 时只画 AOI 的范围（虚线为 AOI 边界），否则画整张地图。问题点按检查项用不同形状标出：圆形 turn_direction、方形 right_of_way、三角形 autoware。
 
 ## 告警打分 (`Using_LR`)
