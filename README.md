@@ -277,6 +277,7 @@ MapChecker/
   check_lanelet_map.py        入口
   train_model.py              生成训练数据并训练 logistic regression，生成 config/model.yaml
   install.sh                  安装依赖 (ROS / Autoware 除外)
+  CHANGELOG.md                更新日志
   ext/                        扩展检查 (配置中 enable 为 true 时运行)，每项有自己的 README.md
     README.md                 如何编写扩展检查 (接口、ctx、out)
     _template/                新扩展的模板 (不会自动运行)
