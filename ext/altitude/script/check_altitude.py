@@ -6,7 +6,7 @@
   spike  尖峰: 边界上一点前后两段都是跳变且方向相反，即该点比前后两点都高 (或都低)
   cross  横坡: lanelet 一侧边界上的点与另一侧边界的高差大于 max_cross_slope × 两者的距离
 没有 ele 的节点单独报告。按高差从大到小输出，编号 #k 与趋势图中的编号一致。
-趋势图 (plot 为 true 时) 保存在日志旁，见 _plot.py。
+趋势图 (plot 为 true 时) 保存在日志旁；isShow 为 true 时报告结束后在窗口中显示，单击突兀点弹出细节小窗口，见 _plot.py。
 
 说明见 ext/altitude/README.md，参数见 ext/altitude/config/config.yaml。单独运行:
   python3 check_lanelet_map.py --only-ext altitude
@@ -27,6 +27,7 @@ DEFAULT_CONFIG = {
     "min_step": 0.1,
     "plot": True,
     "max_profiles": 12,
+    "isShow": False,
 }
 
 MIN_STAT_LENGTH = 1.0  # 统计坡度分布时只用水平距离不小于它 (米) 的点对，太近的两点坡度没有意义
@@ -40,13 +41,14 @@ def configure(cfg):
     cfg["max_profiles"] = int(cfg["max_profiles"])
     if cfg["max_profiles"] < 0:
         raise ValueError(f"max_profiles must be >= 0, got {cfg['max_profiles']}")
-    if not isinstance(cfg["plot"], bool):
-        raise ValueError(f"plot must be true or false, got {cfg['plot']!r}")
-    if cfg["plot"]:
+    for key in ("plot", "isShow"):
+        if not isinstance(cfg[key], bool):
+            raise ValueError(f"{key} must be true or false, got {cfg[key]!r}")
+    if cfg["plot"] or cfg["isShow"]:
         try:
             import matplotlib  # noqa: F401
         except ImportError as e:
-            raise ValueError(f"plot requires matplotlib ({e}), or set plot: false") from e
+            raise ValueError(f"plot / isShow require matplotlib ({e}), or set both to false") from e
     return cfg
 
 
@@ -223,12 +225,14 @@ def check(ctx, cfg, out):
         out.info(f"AOI: {len(lanelets)} of {len(ctx.vehicle)} vehicle lanelets fully inside (only these are checked)")
 
     found, stats = find_abrupt(lanelets, cfg)
-    reported = []  # 输出了的突兀点 (没有被忽略)，编号为下标 + 1
+    reported, lines = [], []  # 输出了的突兀点 (没有被忽略，编号为下标 + 1) 和输出的那一行
     for a in found:
         before = out.warnings
-        out.warn(f"#{len(reported) + 1} {a.text}", tuple(dict.fromkeys(lid for lid, _ in a.users)), pos=a.pos)
+        text = f"#{len(reported) + 1} {a.text}"
+        out.warn(text, tuple(dict.fromkeys(lid for lid, _ in a.users)), pos=a.pos)
         if out.warnings > before:
             reported.append(a)
+            lines.append(f"[WARNING] {text}")
 
     missing = missing_elevation(lanelets)
     for lid, nodes in missing.items():
@@ -260,5 +264,11 @@ def check(ctx, cfg, out):
             os.makedirs(os.path.dirname(os.path.abspath(path)), exist_ok=True)
             save_trend_chart(path, ctx, lanelets, reported, cfg["max_profiles"])
             out.info(f"Trend chart: {path}")
+    if cfg["isShow"]:
+        from ._plot import open_window
+
+        open_window(ctx, lanelets, reported, lines, cfg["max_profiles"])
+        out.info("Trend chart window: opens after the report, click an abrupt point or a lanelet to show its "
+                 "elevation profile in a new window")
     if out.warnings == 0:
         out.ok("No abrupt elevation change on the checked lane boundaries")

@@ -16,6 +16,7 @@ import unittest
 
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path[:0] = [os.path.join(BASE_DIR, "libs"), BASE_DIR]
+os.environ["MPLBACKEND"] = "Agg"  # 扩展创建的窗口 (如 altitude 的 isShow) 不真的弹出，子进程也一样
 
 import numpy as np  # noqa: E402
 
@@ -82,6 +83,8 @@ class ExtensionTest(unittest.TestCase):
 
     def tearDown(self):
         shutil.rmtree(self.tmp)
+        if "matplotlib.pyplot" in sys.modules:
+            sys.modules["matplotlib.pyplot"].close("all")
 
     def test_every_extension_loads_and_runs(self):
         """ext/ 下所有扩展 (包括 _template) 用默认配置都能加载，并在合成地图上运行不出错"""
@@ -153,6 +156,45 @@ class ExtensionTest(unittest.TestCase):
         self.assertGreater(out.suppressed[("altitude", "41")], 0)
         self.assertTrue(os.path.isfile(prefix + "_altitude.png"), text)
         self.assertIn("Trend chart: " + prefix + "_altitude.png", text)
+
+    def test_altitude_window(self):
+        """altitude 的 isShow: 俯视图窗口中单击突兀点 / lanelet 时，在细节小窗口中显示纵断面"""
+        import matplotlib.pyplot as plt
+        from matplotlib.backend_bases import MouseEvent
+
+        path = os.path.join(self.tmp, "altitude.osm")  # 左边界 x = 20 处有 2 m 的尖峰
+        left = {k + 1: (10.0 * k, 3.5, 0.2 * k + (2.0 if k == 2 else 0.0)) for k in range(6)}
+        right = {k + 7: (10.0 * k, 0.0, 0.2 * k) for k in range(6)}
+        write_osm(path, {**left, **right}, {31: tuple(left), 32: tuple(right)}, {41: (31, 32, "road", {})})
+        ext = extmod.load(extmod.discover()["altitude"], {"plot": False, "isShow": True})
+        _, text = run_extensions([ext], path)
+        self.assertIn("Trend chart window", text)
+        self.assertEqual(plt.get_figlabels(), ["MapChecker altitude: altitude.osm"])
+        fig = plt.figure("MapChecker altitude: altitude.osm")
+        fig.canvas.draw()
+        ax = fig.axes[0]
+
+        def click(x, y):
+            """在俯视图的坐标 (x, y) 处单击，返回 (终端输出, 细节小窗口中纵断面的标题 或 None)"""
+            px, py = ax.transData.transform((x, y))
+            buf = io.StringIO()
+            with contextlib.redirect_stdout(buf):
+                for name in ("button_press_event", "button_release_event"):
+                    fig.canvas.callbacks.process(name, MouseEvent(name, fig.canvas, px, py, button=1))
+            detail = "MapChecker altitude detail"
+            return buf.getvalue(), (plt.figure(detail).axes[0].get_title(loc="left")
+                                    if detail in plt.get_figlabels() else None)
+
+        printed, title = click(20, 3.5)
+        self.assertIn("[WARNING] #1 spike at node 3", printed)
+        self.assertEqual(title, "#1 spike +2.00 m · lanelet 41 left")
+        printed, title = click(45, 1.75)  # lanelet 41 内、离尖峰很远
+        self.assertIn("lanelet 41 (road): 50.0 m, elevation 0.00 ~ 2.40 m, +1.00 m from start to end, "
+                      "abrupt points #1", printed)
+        self.assertEqual(title, "lanelet 41")
+        printed, title = click(45, 10)  # 空白处: 细节小窗口保留
+        self.assertEqual((printed, title), ("", "lanelet 41"))
+        self.assertEqual(len(plt.get_fignums()), 2)  # 重用同一个细节小窗口
 
     def test_new_extension_from_template(self):
         """按 ext/README.md 的步骤复制模板新建扩展: 自动发现、enable、--set、配置检查"""

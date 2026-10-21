@@ -20,6 +20,7 @@ Using_LR 为 true 时，用 model_file (train_model.py 生成的 logistic regres
 
 heatmap.enabled 为 true 时，在日志末尾列出问题频发的区域 (Hotspots)，并在日志目录生成同名的热力图 .png:
 地图上按问题密度从蓝 (少) 到红 (多) 着色，并圈出这些区域；isShow 为 true 时，报告结束后弹出热力图窗口。
+扩展检查也可以在 pyplot 中创建窗口 (如 altitude 的 isShow)，与热力图窗口一起弹出。
 Using_LR 为 true 时热力图和区域按 p 加权 (有分数的 WARNING 计 p 条，其余计 1 条)，即按预计的真问题数排序。
 
 用法:
@@ -59,7 +60,7 @@ from utils import ext as extmod
 from utils.checks import run_core_checks
 from utils.config import DEFAULT_CONFIG_PATH, load_config
 from utils.context import MapContext
-from utils.heatmap import report_hotspots, show_heatmap
+from utils.heatmap import report_hotspots, show_windows
 from utils.ignore import ignore_by_category, load_ignore, report_ignored
 from utils.model import Model
 from utils.printer import Printer
@@ -284,8 +285,8 @@ def main():
             print(f"\nLog saved to: {log_path}")
         if heatmap and os.path.isfile(heatmap["path"]):
             print(f"Heatmap saved to: {heatmap['path']}")
-    if heatmap and heatmap["show"]:
-        show_heatmap()
+    # 热力图 (isShow) 和扩展检查创建的窗口 (如 altitude 的 isShow) 在报告结束后一起弹出
+    show_windows()
     return 1 if total else 0
 
 

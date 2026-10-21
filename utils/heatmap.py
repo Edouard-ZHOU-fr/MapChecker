@@ -6,6 +6,7 @@ Using_LR 时按 p 加权: 有分数的 WARNING 权重为 p (真问题的概率)�
 弹出的窗口中单击问题点或 lanelet 显示 lanelet 编号，见 _enable_click()
 """
 
+import sys
 import time
 from collections import Counter
 
@@ -96,7 +97,7 @@ def report_hotspots(lanelets, aois, out, path, radius, top, map_name, show=False
     """
     在日志中列出问题频发的区域，并把热力图保存到 path (png)。
     aois: 只检查 AOI 时为 AOI 多边形，图的范围限制在 AOI；否则为空，画整张地图
-    show: 同时在 pyplot 中创建窗口，之后由 show_heatmap() 弹出
+    show: 同时在 pyplot 中创建窗口，之后由 show_windows() 弹出
     有模型 (Using_LR) 时按 p 加权，见本模块开头
     """
     weighted = out.model is not None
@@ -129,17 +130,21 @@ def report_hotspots(lanelets, aois, out, path, radius, top, map_name, show=False
     out.info(f"Heatmap: {path}")
 
 
-def show_heatmap():
-    """弹出 report_hotspots(show=True) 创建的热力图窗口 (可缩放、平移)，关闭窗口后返回；没有图形界面时只输出提示"""
+def show_windows():
+    """
+    弹出 pyplot 中创建的窗口 (可缩放、平移): report_hotspots(show=True) 的热力图，以及扩展检查创建的窗口
+    (如 altitude 的 isShow)；关闭所有窗口后返回。没有创建窗口时直接返回，没有图形界面时只输出提示
+    """
+    plt = sys.modules.get("matplotlib.pyplot")  # 没有导入过 pyplot 时不会有窗口，也不用导入
+    if plt is None or not plt.get_fignums():
+        return
     import matplotlib
-    import matplotlib.pyplot as plt
 
-    if not plt.get_fignums():
-        return
+    titles = ", ".join(plt.figure(n).canvas.manager.get_window_title() for n in plt.get_fignums())
     if matplotlib.get_backend().lower() in ("agg", "pdf", "pgf", "ps", "svg", "cairo", "template"):
-        print(f"Heatmap not shown: no display available (matplotlib backend {matplotlib.get_backend()})")
+        print(f"Windows not shown: no display available (matplotlib backend {matplotlib.get_backend()}): {titles}")
         return
-    print("Showing heatmap (click an issue or a lanelet to show its id), close the window to exit")
+    print(f"Showing {titles} (click an issue or a lanelet for details), close the windows to exit")
     plt.show()
 
 

@@ -118,4 +118,5 @@ ext/my_check/
 - 第三方库：`libs/` 中有 numpy、PyYAML、matplotlib、scipy、scikit-learn。需要其他库时加到 [install.sh](../install.sh) 的 `PIP_PACKAGES` 中。
 - 未启用的扩展不会被导入，所以只有启用后才需要它的依赖。
 - 计算量大时，先用 `ctx.vehicle_near()` 或包围盒粗筛，再做精确的几何计算。
+- 生成的文件（如图）放在 `ctx.output_prefix` 旁边。需要交互窗口时，在 `check()` 中用 `matplotlib.pyplot.figure(num="窗口标题")` 创建，**不要调用 `plt.show()`**：报告结束后框架（`utils.heatmap.show_windows()`）把它和热力图窗口一起弹出，没有图形界面时只输出提示。参考 [altitude](altitude/README.md) 的 `isShow`。
 - 在扩展的 README.md 中写明检查什么、为什么、参数、输出示例和测量方法，参考 [crosswalk](crosswalk/README.md)。

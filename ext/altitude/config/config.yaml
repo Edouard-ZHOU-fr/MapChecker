@@ -5,13 +5,15 @@
 enable: true         # true: check_lanelet_map.py 运行本检查 (--ext / --only-ext 指定时不看这一项)
 
 # 突兀点的判定 (坡度 = 高差 / 水平距离，0.15 即 15%)
-max_slope: 0.15        # 车道边界上相邻两点之间的最大坡度，超过时为跳变 (step)；前后两段都超过且方向相反时为尖峰 (spike)
-max_cross_slope: 0.15  # lanelet 一侧边界上的点与另一侧边界之间的最大横坡 (cross)
-min_step: 0.1          # 高差小于它 (米) 时不报，避免测量噪声和几乎重合的两点被误报
+max_slope: 0.30        # 车道边界上相邻两点之间的最大坡度，超过时为跳变 (step)；前后两段都超过且方向相反时为尖峰 (spike)
+max_cross_slope: 0.20  # lanelet 一侧边界上的点与另一侧边界之间的最大横坡 (cross)
+min_step: 0.5          # 高差小于它 (米) 时不报，避免测量噪声和几乎重合的两点被误报
 
 # 高程趋势图: 日志目录中与日志同名的 map_check_YYYYmmdd_HHMMSS_altitude.png (需要 matplotlib)
 plot: true             # true: 生成趋势图 (上: 车道按高程着色的俯视图; 下: 突兀点所在车道的纵断面)
 max_profiles: 12       # 最多画几个突兀点的纵断面 (高差最大的几个)
+isShow: true           # true: 报告结束后弹出高程俯视图窗口 (与热力图窗口分开，可缩放、平移)，单击突兀点 / lanelet 时
+                       #   在另一个小窗口中显示其纵断面；需要图形界面 (没有时只输出提示)，与 plot 无关
 
 # 本检查忽略的 lanelet id，写法同 config/ignore.yaml: [19942, 19991: 原因]
 # (也可以写在 config/ignore.yaml 的 altitude: 下；all: 下的 lanelet 在本检查中同样忽略)

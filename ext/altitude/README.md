@@ -35,6 +35,7 @@ python3 check_lanelet_map.py --only-ext altitude --set altitude.plot=false      
 | `min_step` | `0.1` | 高差小于它（米）时不报，避免测量噪声、几乎重合的两点被误报 |
 | `plot` | `true` | 生成高程趋势图，需要 matplotlib；`false` 时不需要 matplotlib |
 | `max_profiles` | `12` | 趋势图中最多画几个突兀点的纵断面（高差最大的几个） |
+| `isShow` | `false` | `true`：报告结束后弹出高程俯视图窗口，单击突兀点时在另一个小窗口中显示细节，见下文。需要 matplotlib 和图形界面，与 `plot` 无关（配置文件中为 `true`） |
 | `ignore` | `[]` | 本检查忽略的 lanelet id，写法同 `config/ignore.yaml`：`[534, 12868: 原因]` |
 
 默认值是配置文件中缺少该项时使用的值。参数名写错、取值为负数时程序报错（退出码 2）。
@@ -78,6 +79,16 @@ Trend chart: /home/.../MapChecker/logs/map_check_20261021_142946_altitude.png
 - **上：俯视图**。检查的车辆 lanelet 按高程着色（浅蓝低、深蓝高，每约 2 m 一段；颜色范围取全部高程的 1%~99%，超出的用两端的颜色），可以看出整体的高程走势；高程跳变处颜色会突然变化。灰色为不检查的 lanelet（crosswalk 等），深灰为没有 `ele` 的部分。红圈为突兀点，`#k` 为下面画了纵断面的突兀点的编号，相距很近的共用一个标签。
 - **下：纵断面**。高差最大的 `max_profiles` 个突兀点，每个一张小图：横轴为沿车道中心线的距离（0 为突兀点所在 lanelet 的起点，灰底为这条 lanelet），前面和后面各接一条前继 / 后继 lanelet；纵轴为高程。蓝线为左边界，橙线为右边界，红色标出突兀点：跳变为红色的一段，横坡用红色虚线连到另一侧边界。只画突兀点前后各约 40 m。
 
+## 交互窗口（`isShow: true`）
+
+报告和日志写完后，弹出一个**独立的窗口**（标题 `MapChecker altitude: <地图名>`，与热力图窗口分开，两者同时弹出），内容为上面趋势图中的俯视图，可以用工具栏缩放、平移。在其中单击（拖动不算）：
+
+- **突兀点**（红圈，8 像素以内取最近的一个）：弹出细节小窗口 `MapChecker altitude detail`，显示这个突兀点所在车道的纵断面（与趋势图下半部分的画法相同，前后各约 40 m）和报告中的那一行，终端中也输出这一行。俯视图中用橙色标出这个点和它所在的 lanelet。
+- **lanelet**（不在突兀点上）：细节小窗口中显示整条 lanelet 的纵断面（前后各接一条前继 / 后继），标出其上的突兀点，并给出长度、高程范围和起点到终点的高差。
+- **空白处**：取消俯视图中的橙色标记，细节小窗口保留。
+
+细节小窗口只有一个，再次单击时更新其中的内容；关掉后再单击会重新打开。关闭所有窗口后程序退出，退出码不变。没有图形界面（如 ssh）时不弹出窗口，只输出提示。临时不想弹出窗口时用 `--set altitude.isShow=false`。
+
 ## 参考：现有地图的统计（2026-10-21）
 
 | 地图 | 高程范围 | 相邻两点坡度 中位数 / 99% | 横坡 中位数 / 99% | 默认参数下 step / spike / cross |
@@ -101,7 +112,7 @@ ext/altitude/
   README.md
   config/config.yaml           本检查的配置
   script/check_altitude.py     检查脚本 (DEFAULT_CONFIG、configure()、check())
-  script/_plot.py              高程趋势图 (matplotlib)，plot 为 true 时才导入
+  script/_plot.py              高程趋势图和交互窗口 (matplotlib)，plot / isShow 为 true 时才导入
 ```
 
 脚本只包含检查逻辑：地图（包括各节点的 `ele`，见 `Lanelet.left_z` / `right_z`）、AOI、忽略列表、日志和输出由 MapChecker 处理（见 [ext/README.md](../README.md)），趋势图的路径由 `ctx.output_prefix` 给出。检查只依赖 numpy，趋势图另外需要 matplotlib。

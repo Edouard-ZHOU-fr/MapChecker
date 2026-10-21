@@ -4,6 +4,18 @@
 
 ## [未发布]
 
+### 新增
+
+- **扩展 `altitude`**：检查车道边界上高程 `ele` 的突兀点（跳变、尖峰、横坡过大、没有 `ele`），并在日志目录生成高程趋势图 `<日志名>_altitude.png`，见 [ext/altitude/README.md](ext/altitude/README.md)。
+- **altitude 的交互窗口**：配置中 `isShow: true` 时，报告结束后弹出独立的高程俯视图窗口；单击突兀点或 lanelet 时，在另一个小窗口中显示其纵断面和细节。
+- **地图的全部信息**：`ctx.nodes` / `ctx.ways` / `ctx.relations` / `ctx.map` 提供地图文件中的所有节点、way、relation（全部标签、XML 属性和成员）以及 `MetaInfo`，新扩展不需要修改地图读取代码，见 [ext/README.md](ext/README.md)。
+- **扩展的输出文件和窗口**：`ctx.output_prefix` 为日志的路径前缀，扩展生成的文件与日志同名；扩展在 pyplot 中创建的窗口在报告结束后与热力图窗口一起弹出。
+
+### 变更
+
+- 结构不完整的 lanelet（左 / 右边界不正好各一条，或引用了不存在的 way / 节点）以前被悄悄跳过或导致程序崩溃，现在在报告开头列出 `Lanelets not loaded (incomplete, not checked): ...`。
+- **不兼容**：`utils.lanelet_map.load_map()` 返回 `LaneletMap`（原来是 `(lanelets, reg_elems, aois)`），`MapContext(lanelet_map, opts, ...)` 的参数随之改变；`utils.heatmap.show_heatmap()` 改名为 `show_windows()`。只通过 `ctx` 使用地图的检查和扩展不受影响。
+
 ## [3.0.0] - 2026-10-21
 
 新增扩展检查框架：在 `ext/` 下新建一个目录，就能加入一项新的检查。
