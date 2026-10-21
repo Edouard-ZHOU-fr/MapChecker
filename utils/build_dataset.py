@@ -60,7 +60,7 @@ def check_version(repo, map_rel, rev, opts, autoware):
             data = f.read()
     else:
         data = git(repo, "show", f"{rev}:{map_rel}")
-    lanelets, reg_elems, aois = load_map(io.BytesIO(data))
+    lanelet_map = load_map(io.BytesIO(data))
     out = Printer(False)
     with redirect_stdout(io.StringIO()):
         result = None
@@ -70,9 +70,10 @@ def check_version(repo, map_rel, rev, opts, autoware):
                 f.write(data)
                 f.flush()
                 result = _quiet_stderr(validate, f.name)
-        run_core_checks(MapContext(lanelets, reg_elems, aois, opts), out, result)
+        run_core_checks(MapContext(lanelet_map, opts), out, result)
     issues = {(i.category, "/".join(sorted(i.ids, key=int))): i.features for i in out.issues}
-    return issues, {k: ll.turn_direction for k, ll in lanelets.items()}, covered_pairs(reg_elems)
+    return (issues, {k: ll.turn_direction for k, ll in lanelet_map.lanelets.items()},
+            covered_pairs(lanelet_map.reg_elems))
 
 
 def _quiet_stderr(func, *args):

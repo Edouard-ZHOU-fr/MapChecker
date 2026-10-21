@@ -14,24 +14,34 @@ from .topology import build_topology, find_overlaps
 
 class MapContext:
     """
+    map:       utils.lanelet_map.LaneletMap，地图文件中的全部信息 (还有 meta、attrib、extra、skipped、projected)；
+               下面几项是其中的同名属性:
     lanelets:  {id: utils.lanelet_map.Lanelet}，包括 crosswalk 等非车辆 lanelet
     reg_elems: {id: utils.lanelet_map.RegElem}
     aois:      地图中的 AOI 多边形列表
+    nodes / ways / relations: 所有 <node> / <way> / <relation>: {id: Node / Way / Relation}
     opts:      检查参数 (config/config.yaml 合并命令行参数)，如 opts["min_overlap_area"]
     map_path:  地图文件路径 (从内存读取时为 None)
+    output_prefix: 本次运行的输出文件 (日志、热力图) 的路径前缀，如 logs/map_check_20261021_141000；
+               扩展检查生成的其他文件 (如图) 命名为 f"{output_prefix}_{名称}.png"。None 时 (如测试中) 不生成文件
     """
 
-    def __init__(self, lanelets, reg_elems, aois, opts, map_path=None):
-        self.lanelets = lanelets
-        self.reg_elems = reg_elems
-        self.aois = aois
+    def __init__(self, lanelet_map, opts, map_path=None, output_prefix=None):
+        self.map = lanelet_map
+        self.lanelets = lanelet_map.lanelets
+        self.reg_elems = lanelet_map.reg_elems
+        self.aois = lanelet_map.aois
+        self.nodes = lanelet_map.nodes
+        self.ways = lanelet_map.ways
+        self.relations = lanelet_map.relations
         self.opts = opts
         self.map_path = map_path
+        self.output_prefix = output_prefix
         self._in_aoi = {}
 
     @classmethod
-    def from_file(cls, map_path, opts):
-        return cls(*load_map(map_path), opts, map_path)
+    def from_file(cls, map_path, opts, output_prefix=None):
+        return cls(load_map(map_path), opts, map_path, output_prefix)
 
     @property
     def only_check_aoi(self):

@@ -48,6 +48,10 @@ import time
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 # install.sh 把第三方库装在 libs/ 中，放在最前面，优先于系统和用户目录中的版本
 sys.path.insert(0, os.path.join(BASE_DIR, "libs"))
+# 系统 python3-matplotlib 的 matplotlib-*-nspkg.pth 在 Python 启动时就把系统的 mpl_toolkits 放进了 sys.modules，
+# libs/ 中的 matplotlib 会导入系统旧版的 mpl_toolkits.mplot3d 而失败 (警告 "Unable to import Axes3D")，让 libs/ 中的优先
+if "mpl_toolkits" in sys.modules:
+    sys.modules["mpl_toolkits"].__path__.insert(0, os.path.join(BASE_DIR, "libs", "mpl_toolkits"))
 
 import yaml
 
@@ -62,17 +66,21 @@ from utils.printer import Printer
 
 
 def run(map_path, opts, ignore_entries, ignore_path, out, core=True, validate_autoware=None, extensions=(),
-        heatmap=None):
+        heatmap=None, output_prefix=None):
     """
     core:              是否运行检查 1~3 (--only-ext 时为 False)
     validate_autoware: utils/validate_autoware_map.py 的 validate()，None 表示不运行检查 3
     extensions:        要运行的扩展检查 (utils/ext.py 中 load() 过的 Extension)
     heatmap:           {"path", "radius", "top", "show"}，None 表示不生成热力图
+    output_prefix:     日志 / 热力图的路径前缀 (不含扩展名)，扩展检查生成的文件 (如 altitude 的趋势图) 也用它命名
     """
-    ctx = MapContext.from_file(map_path, opts)
+    ctx = MapContext.from_file(map_path, opts, output_prefix)
     out.info(f"Date: {time.strftime('%Y-%m-%d %H:%M:%S')}")
     out.info(f"Map: {os.path.abspath(map_path)}")
     out.info(f"Lanelets: {len(ctx.lanelets)}, regulatory elements: {len(ctx.reg_elems)}")
+    if ctx.map.skipped:
+        out.info("Lanelets not loaded (incomplete, not checked): "
+                 + "; ".join(f"{lid} ({reason})" for lid, reason in ctx.map.skipped))
     if ctx.only_check_aoi and not ctx.aois:
         out.info("AOI: only_check_AOI is enabled but no AOI found in map, no check performed")
         return 0
@@ -251,7 +259,7 @@ def main():
         heatmap = {"radius": float(cfg["heatmap"]["radius"]), "top": int(cfg["heatmap"]["top"]),
                    "show": bool(cfg["isShow"] if args.show_heatmap is None else args.show_heatmap)}
 
-    # 日志和热力图同名，放在日志目录
+    # 日志、热力图和扩展检查生成的文件同名，放在日志目录
     stamp = os.path.join(cfg["log"]["dir"], time.strftime("map_check_%Y%m%d_%H%M%S"))
     if cfg["log"]["enabled"] or heatmap:
         os.makedirs(cfg["log"]["dir"], exist_ok=True)
@@ -268,7 +276,8 @@ def main():
     out = Printer(not args.no_color and sys.stdout.isatty(), log_file, ignore_by_category(ignore_entries, categories),
                   model)
     try:
-        total = run(map_path, opts, ignore_entries, ignore_path, out, core, validate_autoware, extensions, heatmap)
+        total = run(map_path, opts, ignore_entries, ignore_path, out, core, validate_autoware, extensions, heatmap,
+                    stamp)
     finally:
         if log_file:
             log_file.close()

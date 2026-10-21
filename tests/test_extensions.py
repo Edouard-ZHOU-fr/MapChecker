@@ -17,6 +17,8 @@ import unittest
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path[:0] = [os.path.join(BASE_DIR, "libs"), BASE_DIR]
 
+import numpy as np  # noqa: E402
+
 from utils import ext as extmod  # noqa: E402
 from utils.context import MapContext  # noqa: E402
 from utils.ignore import load_ignore, parse_items  # noqa: E402
@@ -28,16 +30,26 @@ OPTS = {"min_overlap_area": 1.0, "only_check_AOI": False}
 def write_map(path):
     """
     一条沿 +x 的道路 (0 <= x <= 50, 0 <= y <= 3.5)，和一条横穿它的 crosswalk (20 <= x <= 24, -2 <= y <= 5.5)，
-    crosswalk 两端各超出道路 2 m
+    crosswalk 两端各超出道路 2 m；高程都为 0
     """
     points = {1: (0, 3.5), 2: (50, 3.5), 3: (0, 0), 4: (50, 0),
               5: (20, -2), 6: (20, 5.5), 7: (24, -2), 8: (24, 5.5)}
     ways = {11: (1, 2), 12: (3, 4), 13: (5, 6), 14: (7, 8)}
     lanelets = {21: (11, 12, "road", {"speed_limit": "30"}), 22: (13, 14, "crosswalk", {})}
+    write_osm(path, points, ways, lanelets)
+
+
+def write_osm(path, points, ways, lanelets):
+    """
+    points:   {节点 id: (x, y) 或 (x, y, ele)}，ele 缺省为 0，为 None 时节点没有 ele 标签
+    ways:     {way id: (节点 id, ...)}
+    lanelets: {lanelet id: (左边界 way id, 右边界 way id, subtype, 其他标签)}
+    """
     lines = ['<?xml version="1.0"?>', '<osm version="0.6">']
-    for nid, (x, y) in points.items():
+    for nid, (x, y, *z) in points.items():
+        ele = "" if z and z[0] is None else f'<tag k="ele" v="{z[0] if z else 0}"/>'
         lines.append(f'<node id="{nid}" lat="{48 + y * 1e-5}" lon="{2 + x * 1e-5}">'
-                     f'<tag k="local_x" v="{x}"/><tag k="local_y" v="{y}"/><tag k="ele" v="0"/></node>')
+                     f'<tag k="local_x" v="{x}"/><tag k="local_y" v="{y}"/>{ele}</node>')
     for wid, refs in ways.items():
         lines.append(f'<way id="{wid}">' + "".join(f'<nd ref="{r}"/>' for r in refs) + "</way>")
     for rid, (left, right, subtype, tags) in lanelets.items():
@@ -50,12 +62,15 @@ def write_map(path):
         f.write("\n".join(lines))
 
 
-def run_extensions(extensions, map_path):
-    """运行 load() 过的扩展，返回 (Printer, 输出的文字)"""
-    out = Printer(False)
+def run_extensions(extensions, map_path, output_prefix=None, ignore=None):
+    """
+    运行 load() 过的扩展，返回 (Printer, 输出的文字)。output_prefix: 扩展生成的文件 (如图) 的路径前缀；
+    ignore: {检查项: {lanelet id: 原因}} (check_lanelet_map.py 中由 ignore.yaml 和扩展配置中的 ignore 合并而来)
+    """
+    out = Printer(False, ignore=ignore)
     buf = io.StringIO()
     with contextlib.redirect_stdout(buf):
-        extmod.run_extensions(MapContext.from_file(map_path, OPTS), extensions, out)
+        extmod.run_extensions(MapContext.from_file(map_path, OPTS, output_prefix), extensions, out)
     return out, buf.getvalue()
 
 
@@ -93,6 +108,51 @@ class ExtensionTest(unittest.TestCase):
         ext = extmod.load(extmod.discover()["crosswalk"], {"max_extension": 3.0})
         out, _ = run_extensions([ext], self.map_path)
         self.assertEqual(out.count["crosswalk"], 0)
+
+    def test_altitude(self):
+        """altitude: 跳变 / 尖峰 / 横坡的判定、没有 ele 的节点、忽略列表和趋势图"""
+        ext = extmod.load(extmod.discover()["altitude"], {"plot": False})
+        pts = np.c_[np.arange(0.0, 60.0, 10.0), np.zeros(6)]
+        slope = 0.02 * pts[:, 0]  # 2% 的坡，相邻两点相距 10 m
+
+        def kinds(offset, min_step=0.1):
+            return [(kind, k) for kind, k, *_ in ext.module.slope_points(pts, slope + offset, 0.15, min_step)]
+
+        self.assertEqual(kinds(0.0), [])
+        self.assertEqual(kinds(np.r_[0, 0, 2.0, 0, 0, 0]), [("spike", 2)])
+        self.assertEqual(kinds(np.r_[0, 0, 0, 2.0, 2.0, 2.0]), [("step", 2)])
+        self.assertEqual(kinds(np.r_[0, 0, 0, 2.0, 2.0, 2.0], min_step=3.0), [])
+        self.assertEqual(kinds(np.r_[0, 0, np.nan, 0, 0, 0]), [])
+
+        out, _ = run_extensions([ext], self.map_path)  # 高程都为 0
+        self.assertEqual(out.count["altitude"], 0)
+
+        # 一条 50 m 长的道路，左边界 x = 20 处有 2 m 的尖峰 (右边界上对面的点不再报横坡)，右边界 x = 40 的点没有 ele
+        path = os.path.join(self.tmp, "altitude.osm")
+        left = {k + 1: (10.0 * k, 3.5, 0.2 * k + (2.0 if k == 2 else 0.0)) for k in range(6)}
+        right = {k + 7: (10.0 * k, 0.0, None if k == 4 else 0.2 * k) for k in range(6)}
+        write_osm(path, {**left, **right}, {31: tuple(left), 32: tuple(right)}, {41: (31, 32, "road", {})})
+        out, text = run_extensions([ext], path)
+        self.assertEqual(out.count["altitude"], 2, text)
+        self.assertIn("#1 spike at node 3: 2.00 m above nodes 2 and 4", text)
+        self.assertIn("lanelet 41: no elevation (ele) on node 11", text)
+
+        # 左边界整体比右边界高 1 m: 横坡 1 / 3.5 = 29%，整条 lanelet 报一条
+        left = {nid: (x, y, z + 1.0 if nid != 3 else 1.4) for nid, (x, y, z) in left.items()}
+        right = {nid: (x, y, 0.2 * (nid - 7)) for nid, (x, y, _) in right.items()}
+        write_osm(path, {**left, **right}, {31: tuple(left), 32: tuple(right)}, {41: (31, 32, "road", {})})
+        out, text = run_extensions([ext], path)
+        self.assertEqual(out.count["altitude"], 1, text)
+        self.assertIn("cross slope at node 1: 1.00 m above the right boundary 3.50 m away (cross slope 29%", text)
+        self.assertIn("lanelet 41 left (12 nodes over max)", text)
+
+        ext = extmod.load(extmod.discover()["altitude"], {"ignore": [41]})
+        prefix = os.path.join(self.tmp, "logs", "map_check")
+        out, text = run_extensions([ext], path, prefix, ignore={"altitude": ext.cfg["ignore"]})
+        self.assertEqual(out.count["altitude"], 0)
+        self.assertGreater(out.suppressed[("altitude", "41")], 0)
+        self.assertTrue(os.path.isfile(prefix + "_altitude.png"), text)
+        self.assertIn("Trend chart: " + prefix + "_altitude.png", text)
 
     def test_new_extension_from_template(self):
         """按 ext/README.md 的步骤复制模板新建扩展: 自动发现、enable、--set、配置检查"""

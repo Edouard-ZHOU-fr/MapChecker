@@ -4,6 +4,7 @@
 
 | 扩展 | 内容 |
 |---|---|
+| [altitude](altitude/README.md) | 车道边界上高程 `ele` 的突兀点（跳变、尖峰、横坡过大、没有 `ele`），另外生成高程趋势图 `<日志名>_altitude.png` |
 | [crosswalk](crosswalk/README.md) | crosswalk 在横向上最多超出道路多少，超出 `max_extension` 时报 WARNING |
 | [_template](_template/README.md) | 新扩展的模板（示例：车辆 lanelet 的必需标签），不会自动运行 |
 
@@ -76,6 +77,8 @@ ext/my_check/
 | 属性 / 方法 | 说明 |
 |---|---|
 | `ctx.lanelets` / `ctx.reg_elems` | 所有 lanelet（包括 crosswalk 等）/ 规则元素：`{id: Lanelet}` / `{id: RegElem}`，见 [utils/lanelet_map.py](../utils/lanelet_map.py) |
+| `ctx.nodes` / `ctx.ways` / `ctx.relations` | 地图中所有的 `<node>` / `<way>` / `<relation>`：`{id: Node}` / `{id: Way}` / `{id: Relation}`，包括不是车道边界的 way（停止线、红绿灯、减速带等）和其他类型的 relation（如 multipolygon），见下文 |
+| `ctx.map` | 地图文件中的全部信息（`utils.lanelet_map.LaneletMap`），上面几项是它的同名属性；另外有 `meta`（`<MetaInfo>` 的属性，如 `format_version`、`map_version`）、`attrib`（`<osm>` 根元素的属性，如 `generator`）、`extra`（其他顶层元素，如 `<bounds>`，为原始的 XML 元素）、`skipped`（结构不完整、没有读入 `ctx.lanelets` 的 lanelet：`[(id, 原因)]`）、`projected`（`True` 表示有节点缺少 `local_x` / `local_y`，所有坐标由经纬度投影） |
 | `ctx.vehicle` | 车辆 lanelet（`road`、`highway`、`road_shoulder`） |
 | `ctx.by_subtype("crosswalk", ...)` | 指定 subtype 的 lanelet |
 | `ctx.only_check_aoi` / `ctx.select(lanelets)` / `ctx.in_aoi(id)` | `only_check_AOI` 是否开启 / 只保留完全位于 AOI 内的（未开启时原样返回）/ 单个 lanelet 是否在检查范围内 |
@@ -83,8 +86,18 @@ ext/my_check/
 | `ctx.overlaps` | 几何重叠的车辆 lanelet 对 `[(a_id, b_id, rel, 面积, 中心, 长度)]`，`rel` 为 `None`（交叉）/ `"merge"` / `"diverge"`；与检查 1、2 共用，只算一次 |
 | `ctx.topology` | 前后继关系 `(succ, pred)`：`{lanelet id: 后继 / 前继 id 的集合}` |
 | `ctx.opts` / `ctx.aois` / `ctx.map_path` | 检查参数（`config/config.yaml` 合并命令行）/ AOI 多边形 / 地图路径 |
+| `ctx.output_prefix` | 本次运行的日志 / 热力图的路径前缀（如 `logs/map_check_20261021_141000`）。扩展生成的其他文件（如图）命名为 `f"{ctx.output_prefix}_{out.category}.png"`，目录可能还不存在，写文件前先 `os.makedirs`。为 `None` 时（如测试中）不生成文件 |
 
-`Lanelet` 常用的属性：`id`、`tags`、`subtype`、`turn_direction`、`left` / `right`（边界点 `[N, 2]`，局部米制坐标，方向与行驶方向一致）、`polygon`、`reg_elems`。几何函数（中心线、重采样、点是否在多边形内、重叠面积、多边形距离等）见 [utils/geometry.py](../utils/geometry.py)。
+地图文件中的所有内容都能从 `ctx` 拿到（每个元素的全部标签、XML 属性、成员都原样保留），新扩展不需要修改地图读取的代码：
+
+| 类 | 属性 |
+|---|---|
+| `Lanelet` | `id`、`tags`、`subtype`、`turn_direction`、`left` / `right`（边界点 `[N, 2]`，局部米制坐标，方向与行驶方向一致）、`left_ids` / `right_ids`（边界点的节点 id）、`left_z` / `right_z`（边界点的高程 `ele` `[N]`，节点没有 `ele` 时为 `nan`）、`left_way` / `right_way`（边界的 way id，线型等见 `ctx.ways[ll.left_way].tags`）、`left_inverted` / `right_inverted`（边界方向与 way 中节点的顺序相反，读取时翻转过）、`centerline_way`（地图中指定的中心线，没有时为 `None`）、`polygon`、`reg_elems`（引用的规则元素 id） |
+| `Node` | `id`、`x` / `y` / `xy`（局部米制坐标）、`ele`（没有时为 `nan`）、`lat` / `lon`、`tags`（全部标签，如灯泡的 `color`）、`attrib`（XML 属性） |
+| `Way` | `id`、`node_ids`（文件中的顺序）、`points`（`[N, 2]`）、`z`（`[N]` 高程）、`tags`、`type` / `subtype`（如 `line_thin` / `dashed`、`stop_line`、`traffic_light`）、`closed`（首尾是同一个节点）、`attrib`、`missing`（引用了但地图中不存在的节点，对应的 `points` 为 `nan`） |
+| `Relation` / `RegElem` | `id`、`tags`、`type` / `subtype`、`members`（`[(type, role, ref)]`，文件中的顺序）、`refs(role)`、`attrib`。规则元素成员的几何按 ref 查找，例如停止线 `ctx.ways[re.refs("ref_line")[0]].points`、红绿灯高度 `ctx.ways[re.refs("refers")[0]].tags["height"]` |
+
+几何函数（中心线、重采样、点是否在多边形内、重叠面积、多边形距离等）见 [utils/geometry.py](../utils/geometry.py)。
 
 `ctx` 中的数据由所有检查共用，只读，不要修改。
 

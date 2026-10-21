@@ -266,9 +266,10 @@ Heatmap: .../logs/map_check_20261016_093357.png
 
 | 扩展 | 内容 |
 |---|---|
+| [altitude](ext/altitude/README.md) | 车道边界上高程 `ele` 的突兀点（跳变、尖峰、横坡过大、没有 `ele`），另外在日志目录生成高程趋势图 `<日志名>_altitude.png` |
 | [crosswalk](ext/crosswalk/README.md) | crosswalk 在横向上最多超出道路多少，超出 `max_extension` 时报 WARNING |
 
-**新增扩展检查**：复制模板 `cp -r ext/_template ext/<名称>`，只需写一个 `check(ctx, cfg, out)` 函数；地图读取、配置、忽略列表、日志和热力图都由框架处理。`ctx` 中有共享的计算结果（如 lanelet 重叠、前后继关系），不用重复计算。步骤和接口见 [ext/README.md](ext/README.md)。`python3 -m unittest discover -s tests` 会自动加载 `ext/` 下的每个扩展，在一张合成地图上运行一次。
+**新增扩展检查**：复制模板 `cp -r ext/_template ext/<名称>`，只需写一个 `check(ctx, cfg, out)` 函数；地图读取、配置、忽略列表、日志和热力图都由框架处理。`ctx` 中有地图文件的全部信息（所有节点、way、relation 的标签和几何）和共享的计算结果（如 lanelet 重叠、前后继关系），不用改地图读取代码，也不用重复计算。步骤和接口见 [ext/README.md](ext/README.md)。`python3 -m unittest discover -s tests` 会自动加载 `ext/` 下的每个扩展，在一张合成地图上运行一次。
 
 ## 目录结构
 
@@ -281,6 +282,7 @@ MapChecker/
   ext/                        扩展检查 (配置中 enable 为 true 时运行)，每项有自己的 README.md
     README.md                 如何编写扩展检查 (接口、ctx、out)
     _template/                新扩展的模板 (不会自动运行)
+    altitude/                 车道高程的突兀点，并生成高程趋势图
     crosswalk/                crosswalk 在横向上最多超出道路多少
   tests/                      测试 (python3 -m unittest discover -s tests)
   config/
@@ -289,8 +291,8 @@ MapChecker/
     dataset.yaml              train_model.py 的配置 (地图仓库列表、标注规则)
     model.yaml                告警打分模型 (train_model.py 生成)
   utils/
-    lanelet_map.py            读取 Lanelet2 OSM 地图
-    context.py                MapContext: 地图和各项检查共享的计算结果 (重叠、拓扑、AOI)
+    lanelet_map.py            读取 Lanelet2 OSM 地图 (保留全部节点、way、relation 和 MetaInfo)
+    context.py                MapContext: 地图的全部信息和各项检查共享的计算结果 (重叠、拓扑、AOI)
     checks.py                 检查 1~3 的流程
     geometry.py               几何工具 (中心线、航向变化、重叠面积、AOI)
     topology.py               前后继关系和 lanelet 重叠
