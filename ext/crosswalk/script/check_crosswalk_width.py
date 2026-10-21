@@ -1,10 +1,12 @@
 """
-扩展检查 crosswalk: crosswalk 在横向上最多超出道路多少，超出过多时报 WARNING
+Extension check crosswalk: how far crosswalks extend beyond the road laterally at most, WARNING if too far
 
-crosswalk lanelet 的左右边界沿行人行走的方向，即横穿道路的方向。测量 crosswalk 每一端超出道路
-(与它重叠的所有车辆 lanelet 的并集) 的最大长度，大于 max_extension 时报 WARNING，其余只输出测量值。
+The left and right boundaries of a crosswalk lanelet follow the walking direction of pedestrians, i.e. across the
+road. Measures the maximum length by which each end of the crosswalk extends beyond the road
+(union of all vehicle lanelets overlapping it), WARNING if larger than max_extension, otherwise only the measured
+value is printed.
 
-说明见 ext/crosswalk/README.md，参数见 ext/crosswalk/config/config.yaml。单独运行:
+See ext/crosswalk/README.md for details, ext/crosswalk/config/config.yaml for parameters. Run alone:
   python3 check_lanelet_map.py --only-ext crosswalk
 """
 
@@ -15,13 +17,13 @@ import numpy as np
 from utils.geometry import arc_length, fmt_xy, points_in_polygon, resample_by_ratio, resample_by_step
 from utils.lanelet_map import by_id
 
-# config.yaml 中缺省项的默认值 (enable / ignore 由 utils/ext.py 处理)
+# default values for items missing in config.yaml (enable / ignore are handled by utils/ext.py)
 DEFAULT_CONFIG = {
     "max_extension": 1.0,
 }
 
-LINE_SPACING = 0.1   # 沿 crosswalk 宽度方向取线的间距 (米)
-STEP = 0.01          # 沿线采样的间距 (米)，即测量精度
+LINE_SPACING = 0.1   # spacing of the lines taken across the crosswalk width (m)
+STEP = 0.01          # sampling step along each line (m), i.e. the measurement precision
 
 
 def configure(cfg):
@@ -32,7 +34,10 @@ def configure(cfg):
 
 
 def axis_lines(cw):
-    """在 crosswalk 宽度方向上每隔约 LINE_SPACING 米取一条平行于左右边界的线，方向与边界相同"""
+    """
+    Takes a line parallel to the left and right boundaries every ~LINE_SPACING m across the crosswalk width,
+    in the same direction as the boundaries
+    """
     ratios = np.linspace(0.0, 1.0, 50)
     lb, rb = resample_by_ratio(cw.left, ratios), resample_by_ratio(cw.right, ratios)
     if arc_length((lb + rb) / 2.0)[-1] < STEP:
@@ -43,8 +48,10 @@ def axis_lines(cw):
 
 def end_extensions(cw, lanes):
     """
-    crosswalk 两端 (起点端, 终点端) 超出道路 (lanes 的并集) 的最大长度，沿 crosswalk 方向测量，
-    每端为 (长度, 道路边缘的车道 id, 端点是否在道路内)；crosswalk 不与任何车道重叠时返回 None
+    Maximum length by which the two ends of the crosswalk (start end, finish end) extend beyond the road (union of
+    lanes), measured along the crosswalk direction,
+    each end is (length, id of the lane at the road edge, whether the end point is inside the road); None if the
+    crosswalk overlaps no lane
     """
     best = [None, None]
     for line in axis_lines(cw):
@@ -54,7 +61,7 @@ def end_extensions(cw, lanes):
         hit = np.nonzero(inside.any(axis=0))[0]
         if not len(hit):
             continue
-        half = (s[1] - s[0]) / 2.0  # 道路边界取在相邻采样点的中间
+        half = (s[1] - s[0]) / 2.0  # the road boundary is taken midway between adjacent sample points
         for side, k in ((0, hit[0]), (1, hit[-1])):
             at_end = k == (0, len(pts) - 1)[side]
             ext = 0.0 if at_end else (s[k] - half if side == 0 else s[-1] - s[k] - half)
@@ -65,8 +72,10 @@ def end_extensions(cw, lanes):
 
 def check(ctx, cfg, out):
     """
-    输出每个 crosswalk 两端超出道路的最大长度，超过 cfg["max_extension"] 时报 WARNING。
-    only_check_AOI 时只检查完全位于 AOI 内的 crosswalk (道路始终用整张地图的车道)
+    Prints the maximum length by which the two ends of each crosswalk extend beyond the road, WARNING if over
+    cfg["max_extension"].
+    With only_check_AOI, only crosswalks fully inside the AOI are checked (the road always uses the lanes of the
+    whole map)
     """
     max_ext = cfg["max_extension"]
     out.header(f"Ext {out.category}: how far crosswalks extend beyond the road (max {max_ext:.2f} m)")
@@ -76,7 +85,7 @@ def check(ctx, cfg, out):
         out.info(f"AOI: {len(inside)} of {len(crosswalks)} crosswalks fully inside (only these are checked)")
         crosswalks = inside
 
-    not_crossing = []  # 不与任何车道重叠的 crosswalk
+    not_crossing = []  # crosswalks that overlap no lane
     for cw in sorted(crosswalks.values(), key=by_id):
         exts = end_extensions(cw, ctx.vehicle_near(cw.polygon))
         if exts is None:

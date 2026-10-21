@@ -1,16 +1,20 @@
 #!/usr/bin/env bash
-# 安装 MapChecker 需要的系统包和 Python 库 (Ubuntu 22.04 + ROS 2 Humble)
+# Install the system packages and Python libraries needed by MapChecker (Ubuntu 22.04 + ROS 2 Humble)
 #
-# 用法:
+# Usage:
 #   ./install.sh
-#   PYTHON=/path/to/python3 ./install.sh   # 使用另一个 Python
+#   PYTHON=/path/to/python3 ./install.sh   # use another Python
 #
-#   apt: python3-pip、python3-tk (热力图弹出窗口)、git (train_model.py 读取地图仓库的历史)，已安装的跳过
-#   pip: numpy、PyYAML、matplotlib、scipy、scikit-learn 及其依赖全部装到 MapChecker/libs/，不影响系统和用户目录；
-#        check_lanelet_map.py / train_model.py 启动时把 libs/ 加到 sys.path 最前面。
-#        每次运行都重新安装并整体替换 libs/ (安装失败时保留原来的 libs/)。
-#        libs/ 中有编译好的库，只能用安装时的 Python 版本运行。numpy 限制为 < 2: ROS 2 Humble 的 Python 包是用 numpy 1.x 编译的
-#   不安装 ROS / Autoware: autoware_checking 需要的 ~/ros/ad_ros2_ws 默认每台 PC 上都有，运行前 source 即可 (见 README.md)
+#   apt: python3-pip, python3-tk (heatmap pop-up window), git (train_model.py reads the history of map repositories),
+#        skipped if already installed
+#   pip: numpy, PyYAML, matplotlib, scipy, scikit-learn and their dependencies all go into MapChecker/libs/,
+#        without affecting the system and user directories;
+#        check_lanelet_map.py / train_model.py put libs/ at the front of sys.path at startup.
+#        Every run reinstalls and replaces libs/ as a whole (the existing libs/ is kept if the installation fails).
+#        libs/ contains compiled libraries and can only be run with the Python version used for installation.
+#        numpy is limited to < 2: the Python packages of ROS 2 Humble are compiled against numpy 1.x
+#   ROS / Autoware are not installed: ~/ros/ad_ros2_ws needed by autoware_checking is present on every PC by default,
+#        just source it before running (see README.md)
 
 set -euo pipefail
 
@@ -38,7 +42,7 @@ else
     echo "System packages already installed: ${APT_PACKAGES[*]}"
 fi
 
-# 先装到临时目录，成功后再替换 libs/
+# install into a temporary directory first, replace libs/ only after success
 tmp_dir=$(mktemp -d "$LIBS_DIR.XXXXXX")
 trap 'rm -rf "$tmp_dir"' EXIT
 echo "Installing Python packages into $LIBS_DIR: ${PIP_PACKAGES[*]}"

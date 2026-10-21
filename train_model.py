@@ -1,18 +1,21 @@
 #!/usr/bin/env python3
 """
-生成告警打分模型 (logistic regression): 先生成训练数据，再训练，结果保存到 config/model.yaml
+Generate the warning scoring model (logistic regression): build the training data first, then train; the result is saved
+to config/model.yaml
 
-  1. utils/build_dataset.py: 在 config/dataset.yaml 列出的地图仓库的每个历史版本上运行检查 1 和检查 2，
-     跟踪每条告警之后是否被修复并标注 label，输出 data/turn_direction.csv 和 data/right_of_way.csv
-  2. utils/tranning.py:      用这些数据训练模型，输出 leave-one-map-out 交叉验证的结果和模型系数
+  1. utils/build_dataset.py: runs Check 1 and Check 2 on every historical revision of the map repositories listed in
+     config/dataset.yaml, tracks whether each warning is fixed later and assigns its label,
+     outputs data/turn_direction.csv and data/right_of_way.csv
+  2. utils/tranning.py:      trains the models on this data, outputs the leave-one-map-out cross-validation results
+     and the model coefficients
 
-需要 scikit-learn、scipy 和 git；dataset.yaml 中 autoware_checking 为 true 时还需要先 source ROS
-(见 utils/validate_autoware_map.py)。检查阈值使用 config/config.yaml 中的设置。详见 README.md。
+Requires scikit-learn, scipy and git; when autoware_checking is true in dataset.yaml, ROS must also be sourced first
+(see utils/validate_autoware_map.py). The check thresholds are taken from config/config.yaml. See README.md for details.
 
-用法:
+Usage:
   python3 train_model.py                    # config/dataset.yaml -> data/ -> config/model.yaml
-  python3 train_model.py --C 0.1            # 加强正则化
-  python3 train_model.py --skip-build       # 不重新生成训练数据，直接用已有的 data/ 训练 (例如只调整 --C)
+  python3 train_model.py --C 0.1            # stronger regularization
+  python3 train_model.py --skip-build       # train on the existing data/ without rebuilding it (e.g. only tuning --C)
   python3 train_model.py -c other.yaml -o other_model.yaml
 """
 
@@ -21,7 +24,7 @@ import os
 import sys
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-# install.sh 把第三方库装在 libs/ 中，放在最前面，优先于系统和用户目录中的版本
+# install.sh installs third-party libraries in libs/; put it first, ahead of the versions in system and user directories
 sys.path.insert(0, os.path.join(BASE_DIR, "libs"))
 
 from utils.build_dataset import DEFAULT_DATASET_CONFIG, build_dataset, load_dataset_config

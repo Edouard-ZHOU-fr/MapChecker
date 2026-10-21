@@ -1,4 +1,4 @@
-"""lanelet 之间的拓扑关系与几何重叠"""
+"""Topological relations and geometric overlaps between lanelets"""
 
 from collections import defaultdict
 
@@ -9,7 +9,7 @@ from .lanelet_map import by_id
 
 
 def build_topology(lanelets):
-    """前后继关系: 与 lanelet2 一致，按共享端点节点判断"""
+    """Predecessor / successor relations: as in lanelet2, determined by shared end nodes"""
     by_start = defaultdict(list)
     for ll in lanelets.values():
         by_start[(ll.left_ids[0], ll.right_ids[0])].append(ll.id)
@@ -23,7 +23,7 @@ def build_topology(lanelets):
 
 
 def relation_between(a, b, succ, pred):
-    """返回两个 lanelet 的拓扑关系: follow / adjacent / diverge / merge；None 表示没有直接拓扑关系"""
+    """Returns the topological relation of two lanelets: follow / adjacent / diverge / merge; None: no direct relation"""
     if b.id in succ[a.id] or a.id in succ[b.id]:
         return "follow"
     if {a.left_way, a.right_way} & {b.left_way, b.right_way}:
@@ -37,9 +37,10 @@ def relation_between(a, b, succ, pred):
 
 def find_overlaps(lanelets, min_area, step=0.5, topology=None):
     """
-    找出所有几何重叠的车辆 lanelet 对 (不含前后相接、左右相邻)。
-    返回 [(a_id, b_id, rel, 面积, 重叠中心, 重叠区沿主方向的长度)]，rel 为 None (交叉) / "merge" / "diverge"。
-    topology: 已计算的 build_topology(lanelets)，None 时重新计算
+    Find all geometrically overlapping vehicle lanelet pairs (excluding consecutive and adjacent ones).
+    Returns [(a_id, b_id, rel, area, overlap center, length of the overlap along the principal direction)],
+    rel is None (crossing) / "merge" / "diverge".
+    topology: precomputed build_topology(lanelets), recomputed if None
     """
     lls = sorted((ll for ll in lanelets.values() if ll.is_vehicle), key=by_id)
     succ, pred = topology or build_topology(lanelets)

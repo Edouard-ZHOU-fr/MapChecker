@@ -1,14 +1,16 @@
 # 更新日志
 
+中文 | [Français](CHANGELOG.fr.md)
+
 本文件记录 MapChecker 各版本的主要变化，最新的在前。格式参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)。版本号即仓库中的 git tag。标有 **不兼容** 的变更需要修改用法、配置或扩展代码。
 
 ## [未发布]
 
 ### 新增
 
-- **扩展 `altitude`**：检查车道边界上高程 `ele` 的突兀点（跳变、尖峰、横坡过大、没有 `ele`），并在日志目录生成高程趋势图 `<日志名>_altitude.png`，见 [ext/altitude/README.md](ext/altitude/README.md)。
+- **扩展 `altitude`**：检查车道边界上高程 `ele` 的突兀点（跳变、尖峰、横坡过大、没有 `ele`），并在日志目录生成高程趋势图 `<日志名>_altitude.png`，见 [ext/altitude/README.md](../ext/altitude/README.md)。
 - **altitude 的交互窗口**：配置中 `isShow: true` 时，报告结束后弹出独立的高程俯视图窗口；单击突兀点或 lanelet 时，在另一个小窗口中显示其纵断面和细节。
-- **地图的全部信息**：`ctx.nodes` / `ctx.ways` / `ctx.relations` / `ctx.map` 提供地图文件中的所有节点、way、relation（全部标签、XML 属性和成员）以及 `MetaInfo`，新扩展不需要修改地图读取代码，见 [ext/README.md](ext/README.md)。
+- **地图的全部信息**：`ctx.nodes` / `ctx.ways` / `ctx.relations` / `ctx.map` 提供地图文件中的所有节点、way、relation（全部标签、XML 属性和成员）以及 `MetaInfo`，新扩展不需要修改地图读取代码，见 [ext/README.md](../ext/README.md)。
 - **扩展的输出文件和窗口**：`ctx.output_prefix` 为日志的路径前缀，扩展生成的文件与日志同名；扩展在 pyplot 中创建的窗口在报告结束后与热力图窗口一起弹出。
 
 ### 变更
@@ -26,11 +28,11 @@
   - 配置中 `enable: true` 的扩展在检查 1~3 之后运行。
   - 结果写入同一份输出和日志，计入 Summary 和退出码。
   - 忽略列表、AOI 和热力图与检查 1~3 一样处理。
-  - 编写方法见 [ext/README.md](ext/README.md)。
-- **扩展 `crosswalk`**：测量 crosswalk 每一端在横向上超出道路多少，超出 `max_extension` 时报 WARNING，见 [ext/crosswalk/README.md](ext/crosswalk/README.md)。
+  - 编写方法见 [ext/README.md](../ext/README.md)。
+- **扩展 `crosswalk`**：测量 crosswalk 每一端在横向上超出道路多少，超出 `max_extension` 时报 WARNING，见 [ext/crosswalk/README.md](../ext/crosswalk/README.md)。
 - **模板 `ext/_template/`**：复制它来新建扩展。它本身也是一个可运行的示例（检查车辆 lanelet 的必需标签），不会自动运行。
 - **扩展接口**：扩展只需写一个函数 `check(ctx, cfg, out)`。
-  - `ctx`（[utils/context.py](utils/context.py) 中的 `MapContext`）提供地图，以及 lanelet 重叠、前后继关系、AOI 过滤、空间粗筛等共享的计算结果。这些结果与检查 1、2 共用，只计算一次。
+  - `ctx`（[utils/context.py](../utils/context.py) 中的 `MapContext`）提供地图，以及 lanelet 重叠、前后继关系、AOI 过滤、空间粗筛等共享的计算结果。这些结果与检查 1、2 共用，只计算一次。
   - `out` 输出的告警自动归入本检查项。
   - 可选的 `DEFAULT_CONFIG` 写参数默认值；定义了它时，配置中的参数名写错会报错。
   - 可选的 `configure(cfg)` 用来检查参数。
@@ -52,7 +54,7 @@
 
 ### 变更
 
-- 检查 1~3 的流程从 `check_lanelet_map.py` 移到 [utils/checks.py](utils/checks.py)。`utils/build_dataset.py` 和 `train_model.py` 不再导入入口脚本。
+- 检查 1~3 的流程从 `check_lanelet_map.py` 移到 [utils/checks.py](../utils/checks.py)。`utils/build_dataset.py` 和 `train_model.py` 不再导入入口脚本。
 - 报告末尾的 Ignored lanelets 中，没有运行的检查项的条目标为 `check not run`。
 
 ### 修复
@@ -84,8 +86,8 @@
 ### 变更
 
 - **不兼容**：`train_model.py` 现在一次完成生成训练数据和训练两步。
-  - 原来的 `build_dataset.py` 移到 [utils/build_dataset.py](utils/build_dataset.py)，不再单独运行。
-  - 训练部分移到 [utils/tranning.py](utils/tranning.py)。
+  - 原来的 `build_dataset.py` 移到 [utils/build_dataset.py](../utils/build_dataset.py)，不再单独运行。
+  - 训练部分移到 [utils/tranning.py](../utils/tranning.py)。
   - `train_model.py` 用 `-c` 指定 `config/dataset.yaml`，`--data` 参数已去掉。
 - `config/dataset.yaml` 中暂时去掉了 `sqy_map_planning`。
 
@@ -94,7 +96,7 @@
 ### 新增
 
 - **检查 3：Autoware**（`autoware_checking: true`，需要 source ROS）。
-  - 运行 [utils/validate_autoware_map.py](utils/validate_autoware_map.py)，它是 `autoware_lanelet2_validation` 的 Python 版。
+  - 运行 [utils/validate_autoware_map.py](../utils/validate_autoware_map.py)，它是 `autoware_lanelet2_validation` 的 Python 版。
   - 检查地图加载错误、`format_version`、节点高度 `ele` 和红绿灯。
   - 其 `turn_direction` 结果合并到检查 1，同一 lanelet 只报告一次。
   - 命令行：`--[no-]autoware-checking`。

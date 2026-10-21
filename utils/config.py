@@ -1,13 +1,13 @@
-"""读取 config.yaml"""
+"""Read config.yaml"""
 
 import os
 
 import yaml
 
-BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))  # MapChecker/，配置中的相对路径以它为基准
+BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))  # MapChecker/, base for relative paths in the config
 DEFAULT_CONFIG_PATH = os.path.join(BASE_DIR, "config", "config.yaml")
 
-# config.yaml 中缺省项的默认值
+# Default values for items missing from config.yaml
 DEFAULT_CONFIG = {
     "input": "lanelet2_map.osm",
     "log": {"enabled": False, "dir": "logs"},
@@ -27,12 +27,12 @@ DEFAULT_CONFIG = {
 
 
 def resolve(path, base_dir=BASE_DIR):
-    """配置中的路径: 展开 ~，相对路径以 base_dir 为基准"""
+    """Path in the config: expand ~, relative paths are based on base_dir"""
     return os.path.join(base_dir, os.path.expanduser(str(path)))
 
 
 def load_config(path, base_dir=BASE_DIR):
-    """读取 config.yaml，缺省项用 DEFAULT_CONFIG 补全；相对路径以 base_dir 为基准"""
+    """Read config.yaml, fill in missing items from DEFAULT_CONFIG; relative paths are based on base_dir"""
     with open(path, encoding="utf-8") as f:
         user = yaml.safe_load(f) or {}
     cfg = {**DEFAULT_CONFIG, **user}

@@ -1,11 +1,12 @@
-# 扩展检查的配置 (模板)，说明见 README.md
-# 地图 (input)、日志和 only_check_AOI 使用 config/config.yaml 中的设置；
-# 命令行 --set <名称>.<参数>=<值> 优先于这里的设置
+# Configuration of the extension check (template), see README.md
+# The map (input), log and only_check_AOI use the settings in config/config.yaml;
+# the command line --set <name>.<param>=<value> takes precedence over the settings here
 
-enable: false        # true: check_lanelet_map.py 运行本检查 (以 _ 开头的目录如 _template 不会自动运行)
+enable: false        # true: check_lanelet_map.py runs this check (directories starting with _ such as _template
+                     #   are not run automatically)
 
-# 本扩展的参数，默认值见脚本中的 DEFAULT_CONFIG
+# Parameters of this extension, see DEFAULT_CONFIG in the script for default values
 required_tags: [speed_limit]
 
-# 本检查忽略的 lanelet id，写法同 config/ignore.yaml: [614, 615: 原因]
+# Lanelet ids ignored by this check, same syntax as config/ignore.yaml: [614, 615: reason]
 ignore: []

@@ -1,20 +1,25 @@
-# 扩展检查 altitude 的配置，说明见 ext/altitude/README.md
-# 地图 (input)、日志和 only_check_AOI 使用 config/config.yaml 中的设置；
-# 命令行 --set altitude.<参数>=<值> 优先于这里的设置
+# Configuration of the extension check altitude, see ext/altitude/README.md
+# The map (input), log and only_check_AOI use the settings in config/config.yaml;
+# the command line --set altitude.<param>=<value> takes precedence over the settings here
 
-enable: true         # true: check_lanelet_map.py 运行本检查 (--ext / --only-ext 指定时不看这一项)
+enable: true         # true: check_lanelet_map.py runs this check (ignored when --ext / --only-ext is given)
 
-# 突兀点的判定 (坡度 = 高差 / 水平距离，0.15 即 15%)
-max_slope: 0.30        # 车道边界上相邻两点之间的最大坡度，超过时为跳变 (step)；前后两段都超过且方向相反时为尖峰 (spike)
-max_cross_slope: 0.20  # lanelet 一侧边界上的点与另一侧边界之间的最大横坡 (cross)
-min_step: 0.5          # 高差小于它 (米) 时不报，避免测量噪声和几乎重合的两点被误报
+# Abrupt point criteria (slope = height difference / horizontal distance, 0.15 means 15%)
+max_slope: 0.30        # max slope between two adjacent points on a lane boundary, above it: step; if the segments
+                       #   before and after both exceed it in opposite directions: spike
+max_cross_slope: 0.20  # max cross slope between a point on one boundary of a lanelet and the other boundary (cross)
+min_step: 0.5          # height differences below it (m) are not reported, to avoid false reports from measurement
+                       #   noise and nearly coincident points
 
-# 高程趋势图: 日志目录中与日志同名的 map_check_YYYYmmdd_HHMMSS_altitude.png (需要 matplotlib)
-plot: true             # true: 生成趋势图 (上: 车道按高程着色的俯视图; 下: 突兀点所在车道的纵断面)
-max_profiles: 12       # 最多画几个突兀点的纵断面 (高差最大的几个)
-isShow: true           # true: 报告结束后弹出高程俯视图窗口 (与热力图窗口分开，可缩放、平移)，单击突兀点 / lanelet 时
-                       #   在另一个小窗口中显示其纵断面；需要图形界面 (没有时只输出提示)，与 plot 无关
+# Elevation trend chart: map_check_YYYYmmdd_HHMMSS_altitude.png in the log directory, named like the log
+# (requires matplotlib)
+plot: true             # true: generate the trend chart (top: top view with lanes colored by elevation; bottom:
+                       #   elevation profiles of the lanes with abrupt points)
+max_profiles: 12       # max number of abrupt points whose elevation profile is drawn (the largest height differences)
+isShow: true           # true: pop up the elevation top view window after the report (separate from the heatmap window, can
+                       #   zoom / pan), clicking an abrupt point / lanelet shows its elevation profile in another small
+                       #   window; requires a GUI (otherwise only a message is printed), independent of plot
 
-# 本检查忽略的 lanelet id，写法同 config/ignore.yaml: [19942, 19991: 原因]
-# (也可以写在 config/ignore.yaml 的 altitude: 下；all: 下的 lanelet 在本检查中同样忽略)
+# Lanelet ids ignored by this check, same syntax as config/ignore.yaml: [19942, 19991: reason]
+# (can also be written under altitude: in config/ignore.yaml; lanelets under all: are also ignored in this check)
 ignore: []

@@ -1,4 +1,5 @@
-"""检查 1~3 (核心检查) 的流程，check_lanelet_map.py 和 utils/build_dataset.py 共用；扩展检查见 utils/ext.py"""
+"""Flow of Checks 1~3 (core checks), shared by check_lanelet_map.py and utils/build_dataset.py;
+for extension checks see utils/ext.py"""
 
 from .check_autoware import check_autoware
 from .check_right_of_way import check_right_of_way
@@ -11,10 +12,10 @@ CORE_CATEGORIES = ("turn_direction", "right_of_way", "autoware")
 def run_core_checks(ctx, out, autoware=None):
     """
     ctx:      utils.context.MapContext
-    autoware: utils/validate_autoware_map.py 的 validate() 的结果，None 表示不运行检查 3
+    autoware: result of validate() in utils/validate_autoware_map.py, None means Check 3 is not run
     """
     autoware_td = autoware.turn_direction if autoware else None
-    # Autoware 报告的 lanelet 即使 subtype 不在 VEHICLE_SUBTYPES 中也参与检查 1
+    # lanelets reported by Autoware take part in Check 1 even if their subtype is not in VEHICLE_SUBTYPES
     vehicle = {k: v for k, v in ctx.lanelets.items() if v.is_vehicle or k in (autoware_td or {})}
     aoi_ids = None
     if ctx.only_check_aoi:
@@ -22,9 +23,10 @@ def run_core_checks(ctx, out, autoware=None):
         out.info(f"AOI: {len(ctx.aois)} area(s), {len(aoi_ids)} of {len(vehicle)} lanelets fully inside "
                  f"(only these are checked)")
 
-    # 几何关系始终用整张地图计算，AOI 只限制报告范围
+    # geometric relations are always computed on the whole map, AOI only limits the reporting scope
     overlaps = ctx.overlaps
-    # 与其他 lane 相交 (交叉 / 汇入) 的 lanelet；分叉不算相交，分叉出去的弯道视为独立转向
+    # lanelets intersecting other lanes (crossing / merge); diverge does not count as intersecting,
+    # curves diverging off are treated as independent turns
     intersecting = {x for a_id, b_id, rel, *_ in overlaps if rel != "diverge" for x in (a_id, b_id)}
 
     check_turn_direction({k: v for k, v in vehicle.items() if aoi_ids is None or k in aoi_ids}, intersecting,

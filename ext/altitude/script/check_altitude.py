@@ -1,14 +1,19 @@
 """
-扩展检查 altitude: 车道 (车辆 lanelet) 边界上高程 (ele) 的突兀点，并生成高程趋势图
+Extension check altitude: abrupt points of the elevation (ele) on lane (vehicle lanelet) boundaries, and generation
+of the elevation trend chart
 
-突兀点 (高差小于 min_step 的不报):
-  step   跳变: 边界上相邻两点之间的坡度 (高差 / 水平距离) 大于 max_slope
-  spike  尖峰: 边界上一点前后两段都是跳变且方向相反，即该点比前后两点都高 (或都低)
-  cross  横坡: lanelet 一侧边界上的点与另一侧边界的高差大于 max_cross_slope × 两者的距离
-没有 ele 的节点单独报告。按高差从大到小输出，编号 #k 与趋势图中的编号一致。
-趋势图 (plot 为 true 时) 保存在日志旁；isShow 为 true 时报告结束后在窗口中显示，单击突兀点弹出细节小窗口，见 _plot.py。
+Abrupt points (height differences below min_step are not reported):
+  step   slope (height difference / horizontal distance) between two adjacent points on a boundary above max_slope
+  spike  the two segments before and after a point on a boundary are both steps in opposite directions, i.e. the
+         point is higher (or lower) than both the points before and after
+  cross  cross slope: height difference between a point on one boundary of a lanelet and the other boundary
+         greater than max_cross_slope × their distance
+Nodes without ele are reported separately. Output in decreasing order of height difference, the number #k matches
+the one in the trend chart.
+The trend chart (when plot is true) is saved next to the log; when isShow is true it is shown in a window after the
+report, clicking an abrupt point pops up the detail window, see _plot.py.
 
-说明见 ext/altitude/README.md，参数见 ext/altitude/config/config.yaml。单独运行:
+See ext/altitude/README.md for details, ext/altitude/config/config.yaml for parameters. Run alone:
   python3 check_lanelet_map.py --only-ext altitude
 """
 
@@ -20,7 +25,7 @@ import numpy as np
 from utils.geometry import fmt_xy
 from utils.lanelet_map import by_id
 
-# config.yaml 中缺省项的默认值 (enable / ignore 由 utils/ext.py 处理)
+# default values for items missing in config.yaml (enable / ignore are handled by utils/ext.py)
 DEFAULT_CONFIG = {
     "max_slope": 0.15,
     "max_cross_slope": 0.15,
@@ -30,7 +35,7 @@ DEFAULT_CONFIG = {
     "isShow": False,
 }
 
-MIN_STAT_LENGTH = 1.0  # 统计坡度分布时只用水平距离不小于它 (米) 的点对，太近的两点坡度没有意义
+MIN_STAT_LENGTH = 1.0  # slope stats use only point pairs >= this far apart horizontally (m), too-close slopes are meaningless
 
 
 def configure(cfg):
@@ -54,15 +59,17 @@ def configure(cfg):
 
 @dataclass
 class Abrupt:
-    """一个突兀点"""
+    """An abrupt point"""
     kind: str        # "step" / "spike" / "cross"
-    nodes: tuple     # step: 相邻两点的 id；spike / cross: 该点的 id
-    dz: float        # 高差 (米，带符号) step: 后一点减前一点；spike: 该点减前后两点的连线；cross: 该点减另一侧边界
-    dist: float      # 水平距离 (米) step: 两点间；spike: 前后两点间；cross: 该点到另一侧边界
-    slope: float     # 坡度 (绝对值)，spike 为两侧中较大的
-    pos: np.ndarray  # 坐标 [x, y]
-    users: list      # 该点所在的边界 [(lanelet id, "left" / "right")]，第一条用于画纵断面
-    text: str        # 输出的说明 (不含编号)
+    nodes: tuple     # step: ids of the two adjacent points; spike / cross: id of the point
+    dz: float        # height difference (m, signed) step: next point minus previous point; spike: the point minus the line
+                     # joining the points before and after; cross: the point minus the other boundary
+    dist: float      # horizontal distance (m) step: between the two points; spike: between the points before and after;
+                     # cross: from the point to the other boundary
+    slope: float     # slope (absolute value), for spike the larger of the two sides
+    pos: np.ndarray  # coordinates [x, y]
+    users: list      # boundaries of the point [(lanelet id, "left" / "right")], the first is used to draw the elevation profile
+    text: str        # output description (without the number)
 
 
 def pct(x):
@@ -71,8 +78,8 @@ def pct(x):
 
 def boundaries(lanelets):
     """
-    车辆 lanelet 的边界，相邻车道共用的边界只算一次:
-    {way id: (节点 id, 坐标 [N, 2], 高程 [N], [(lanelet id, "left" / "right")])}
+    Boundaries of the vehicle lanelets, a boundary shared by adjacent lanes is counted only once:
+    {way id: (node ids, coordinates [N, 2], elevations [N], [(lanelet id, "left" / "right")])}
     """
     result = {}
     for ll in sorted(lanelets.values(), key=by_id):
@@ -84,16 +91,18 @@ def boundaries(lanelets):
 
 def slope_points(pts, z, max_slope, min_step):
     """
-    一条边界上的跳变和尖峰: [(kind, 点的下标, 高差, 水平距离, 坡度)]
-      step:  第 k 段 (点 k -> k+1) 高差 |dz| >= min_step 且坡度 |dz| / 距离 > max_slope，下标为 k
-      spike: 相邻两段都是 step 且方向相反，下标为中间的点 k+1，高差为它相对前后两点连线的偏离
-    没有高程 (nan) 的点不参与
+    Steps and spikes on one boundary: [(kind, point index, height difference, horizontal distance, slope)]
+      step:  segment k (point k -> k+1) with height difference |dz| >= min_step and slope |dz| / distance > max_slope,
+             index k
+      spike: two adjacent segments are both steps in opposite directions, index is the middle point k+1, height
+             difference is its deviation from the line joining the points before and after
+    Points without elevation (nan) are not considered
     """
     d = np.linalg.norm(np.diff(pts, axis=0), axis=1)
     dz = np.diff(z)
     with np.errstate(invalid="ignore", divide="ignore"):
         steep = (np.abs(dz) >= min_step) & (np.abs(dz) > max_slope * d)
-        slope = np.abs(dz) / d  # 两点重合 (d == 0) 时为 inf
+        slope = np.abs(dz) / d  # inf when the two points coincide (d == 0)
     result, k = [], 0
     while k < len(d):
         if steep[k] and k + 1 < len(d) and steep[k + 1] and dz[k] * dz[k + 1] < 0:
@@ -110,11 +119,14 @@ def slope_points(pts, z, max_slope, min_step):
 
 
 def nearest_on_line(pts, line):
-    """pts 中每个点在折线 line (至少 2 点) 上的最近点: (所在段的下标 k [N], 段内比例 t [N], 距离 [N])"""
+    """
+    Nearest point on the polyline line (at least 2 points) of each point in pts: (index k of the segment [N],
+    ratio t within the segment [N], distance [N])
+    """
     a, ab = line[:-1], np.diff(line, axis=0)
     l2 = (ab ** 2).sum(axis=1)
     t = np.clip(((pts[:, None] - a[None]) * ab[None]).sum(axis=-1) / np.where(l2 > 0, l2, 1.0), 0.0, 1.0)
-    dist = np.linalg.norm(a[None] + t[..., None] * ab[None] - pts[:, None], axis=-1)  # [N, 段数]
+    dist = np.linalg.norm(a[None] + t[..., None] * ab[None] - pts[:, None], axis=-1)  # [N, number of segments]
     k = np.argmin(dist, axis=1)
     i = np.arange(len(pts))
     return k, t[i, k], dist[i, k]
@@ -122,8 +134,9 @@ def nearest_on_line(pts, line):
 
 def cross_points(ll):
     """
-    lanelet 两侧边界上每个点与另一侧边界 (最近点处，沿边界线性插值) 的高差:
-    [(side, 节点 id, 坐标, 高差, 距离, 另一侧边界上最近一段两端的节点 id)]
+    Height difference between each point on both boundaries of the lanelet and the other boundary (at the nearest
+    point, linearly interpolated along the boundary):
+    [(side, node id, coordinates, height difference, distance, end node ids of the nearest segment on the other boundary)]
     """
     result = []
     for side, ids, pts, z, other_ids, other, other_z in (
@@ -142,8 +155,9 @@ def cross_points(ll):
 
 def find_abrupt(lanelets, cfg):
     """
-    lanelets ({id: Lanelet}) 边界上的突兀点，按高差从大到小排序；
-    返回 (突兀点 [Abrupt], 统计 {"slope": 相邻两点的坡度, "cross": 横坡}，只含距离 >= MIN_STAT_LENGTH 的)
+    Abrupt points on the boundaries of lanelets ({id: Lanelet}), sorted by height difference, largest first;
+    returns (abrupt points [Abrupt], statistics {"slope": slopes between adjacent points, "cross": cross slopes}, only
+    those with distance >= MIN_STAT_LENGTH)
     """
     max_slope, max_cross, min_step = cfg["max_slope"], cfg["max_cross_slope"], cfg["min_step"]
     found, stats, seen = [], {"slope": [], "cross": []}, set()
@@ -154,7 +168,7 @@ def find_abrupt(lanelets, cfg):
         stats["slope"] += list(np.abs(np.diff(z))[long_enough] / d[long_enough])
         for kind, k, dz, dist, slope in slope_points(pts, z, max_slope, min_step):
             nodes = (ids[k], ids[k + 1]) if kind == "step" else (ids[k],)
-            if frozenset(nodes) in seen:  # 两条边界有相同的一段 (重叠的 way)
+            if frozenset(nodes) in seen:  # two boundaries share the same segment (overlapping ways)
                 continue
             seen.add(frozenset(nodes))
             if kind == "step":
@@ -167,21 +181,24 @@ def find_abrupt(lanelets, cfg):
                         f"{ids[k - 1]} and {ids[k + 1]} ({z[k]:.2f} m, slope up to {pct(slope)}, max {pct(max_slope)})")
             found.append(Abrupt(kind, nodes, dz, dist, slope, pos, users, f"{text} | {where} at {fmt_xy(pos)}"))
 
-    # 横坡: 每条 lanelet 取高差最大的点。该点或另一侧对应的点已作为跳变 / 尖峰报告时不再报告，避免同一处报两次
+    # cross slope: take the point with the largest height difference in each lanelet. Not reported if this point or
+    # the corresponding point on the other side is already reported as a step / spike, to avoid reporting a spot twice
     flagged = {n for a in found for n in a.nodes}
-    worst = {}  # 节点 id -> [(|高差|, lanelet id, side, 坐标, 高差, 距离, 该 lanelet 中超过 max 的点数)]
+    worst = {}  # node id -> [(|height difference|, lanelet id, side, coordinates, height difference, distance,
+                #              number of points over max in this lanelet)]
     for ll in sorted(lanelets.values(), key=by_id):
         bad = []
         for side, nid, pos, dz, dist, near in cross_points(ll):
             if dist >= MIN_STAT_LENGTH and np.isfinite(dz):
                 stats["cross"].append(abs(dz) / dist)
-            # 高程为 nan 时比较的结果为 False，不会报告
+            # comparisons are False when the elevation is nan, so it is not reported
             if abs(dz) >= min_step and abs(dz) > max_cross * dist and not flagged.intersection((nid,) + near):
                 bad.append((abs(dz), side, nid, pos, dz, dist))
         if bad:
             size, side, nid, pos, dz, dist = max(bad, key=lambda b: b[0])
             worst.setdefault(nid, []).append((size, ll.id, side, pos, dz, dist, len(bad)))
-    # 重叠的 lanelet (如分叉处) 的最大高差在同一个点时合并为一条，高差最大的 lanelet 在前
+    # overlapping lanelets (e.g. at forks) whose largest height difference is at the same point are merged into one,
+    # the lanelet with the largest height difference first
     for nid, items in worst.items():
         items.sort(key=lambda b: -b[0])
         _, lid, side, pos, dz, dist, _ = items[0]
@@ -197,7 +214,7 @@ def find_abrupt(lanelets, cfg):
 
 
 def missing_elevation(lanelets):
-    """边界上没有 ele 的节点 {lanelet id: [节点 id]}"""
+    """Nodes without ele on the boundaries {lanelet id: [node id]}"""
     result = {}
     for ll in sorted(lanelets.values(), key=by_id):
         nodes = [i for i, z in zip(ll.left_ids + ll.right_ids, np.r_[ll.left_z, ll.right_z]) if np.isnan(z)]
@@ -215,8 +232,9 @@ def distribution(values):
 
 def check(ctx, cfg, out):
     """
-    报告车辆 lanelet 边界上的突兀点和没有 ele 的节点，plot 为 true 时生成高程趋势图。
-    only_check_AOI 时只检查完全位于 AOI 内的车辆 lanelet
+    Reports abrupt points and nodes without ele on vehicle lanelet boundaries, generates the elevation trend chart
+    when plot is true.
+    With only_check_AOI, only the vehicle lanelets fully inside the AOI are checked
     """
     out.header(f"Ext {out.category}: abrupt elevation changes on lane boundaries (max slope {pct(cfg['max_slope'])}, "
                f"max cross slope {pct(cfg['max_cross_slope'])}, min step {cfg['min_step']:.2f} m)")
@@ -225,7 +243,7 @@ def check(ctx, cfg, out):
         out.info(f"AOI: {len(lanelets)} of {len(ctx.vehicle)} vehicle lanelets fully inside (only these are checked)")
 
     found, stats = find_abrupt(lanelets, cfg)
-    reported, lines = [], []  # 输出了的突兀点 (没有被忽略，编号为下标 + 1) 和输出的那一行
+    reported, lines = [], []  # reported abrupt points (not ignored, number is index + 1) and their output line
     for a in found:
         before = out.warnings
         text = f"#{len(reported) + 1} {a.text}"

@@ -1,17 +1,20 @@
 """
-扩展检查 (ext/<名称>/) 的发现、加载和运行。编写新的扩展检查见 ext/README.md。
+Discovery, loading and running of extension checks (ext/<name>/). To write a new extension check, see ext/README.md.
 
-每项扩展是 ext/ 下的一个目录，目录名即检查项名称 (用于输出、Summary、忽略列表和 --set)。
-以 _ 开头的目录 (如 _template) 不会自动运行，只能用 --ext / --only-ext 指定:
-  config/config.yaml   enable / script / ignore 由这里处理，其余参数原样传给扩展
-  script/*.py          入口脚本，提供:
-                         check(ctx, cfg, out)  必需: ctx 为 utils.context.MapContext，cfg 为配置 (dict)，
-                                               out 为 utils.printer.ScopedPrinter
-                         DEFAULT_CONFIG        可选: 扩展参数的默认值；有它时配置中写错的参数名会报错
-                         configure(cfg)        可选: 检查 / 转换参数并返回 cfg，有问题时 raise ValueError
-                       script/ 作为包导入，入口可以用相对导入 (from ._helper import f) 使用其他模块；
-                       script/ 下有多个不以 _ 开头的 .py 时，用配置中的 script 指定入口
-  README.md            说明，第一行标题用于 --list-ext
+Each extension is a directory under ext/, whose name is the check name (used in output, Summary, ignore list and --set).
+Directories starting with _ (e.g. _template) are not run automatically, they can only be selected with --ext / --only-ext:
+  config/config.yaml   enable / script / ignore are handled here, other parameters are passed to the extension as is
+  script/*.py          entry script, provides:
+                         check(ctx, cfg, out)  required: ctx is utils.context.MapContext, cfg is the config (dict),
+                                               out is utils.printer.ScopedPrinter
+                         DEFAULT_CONFIG        optional: default values of the extension parameters; when present,
+                                               misspelled parameter names in the config raise an error
+                         configure(cfg)        optional: check / convert the parameters and return cfg,
+                                               raise ValueError on problems
+                       script/ is imported as a package, so the entry can use other modules via relative imports
+                       (from ._helper import f); if script/ has several .py files not starting with _, set the entry
+                       with script in the config
+  README.md            description, the title on the first line is used by --list-ext
 """
 
 import glob
@@ -28,16 +31,16 @@ from .config import BASE_DIR
 from .ignore import parse_items
 
 EXT_DIR = os.path.join(BASE_DIR, "ext")
-FRAMEWORK_CONFIG = {"enable": False, "script": None, "ignore": []}  # 由框架处理的配置项及其默认值
-PACKAGE = "mapchecker_ext"  # ext/<名称>/script/ 导入为包 mapchecker_ext.<名称>
+FRAMEWORK_CONFIG = {"enable": False, "script": None, "ignore": []}  # config items handled by the framework, with default values
+PACKAGE = "mapchecker_ext"  # ext/<name>/script/ is imported as package mapchecker_ext.<name>
 
 
 @dataclass
 class Extension:
-    name: str              # 目录名，即检查项名称
-    path: str              # ext/<名称>/
-    cfg: dict              # 配置；load() 之后补全了默认值，ignore 为 {lanelet id: 原因}
-    module: object = None  # load() 之后为入口脚本
+    name: str              # directory name, i.e. the check name
+    path: str              # ext/<name>/
+    cfg: dict              # config; after load(), default values filled in and ignore is {lanelet id: reason}
+    module: object = None  # after load(), the entry script
 
     @property
     def config_path(self):
@@ -45,12 +48,12 @@ class Extension:
 
     @property
     def enabled(self):
-        """是否自动运行: 配置中 enable 为 true，且目录名不以 _ 开头"""
+        """Whether it runs automatically: enable is true in the config, and the directory name does not start with _"""
         return bool(self.cfg.get("enable")) and not self.name.startswith("_")
 
     @property
     def title(self):
-        """README.md 第一行的标题"""
+        """Title on the first line of README.md"""
         try:
             with open(os.path.join(self.path, "README.md"), encoding="utf-8") as f:
                 return f.readline().lstrip("#").strip()
@@ -59,7 +62,7 @@ class Extension:
 
 
 def discover(ext_dir=EXT_DIR):
-    """ext_dir 下所有扩展 {名称: Extension}，按名称排序；只读配置，不导入脚本"""
+    """All extensions under ext_dir {name: Extension}, sorted by name; only reads the configs, does not import scripts"""
     result = {}
     for cfg_path in sorted(glob.glob(os.path.join(ext_dir, "*", "config", "config.yaml"))):
         path = os.path.dirname(os.path.dirname(cfg_path))
@@ -75,7 +78,7 @@ def discover(ext_dir=EXT_DIR):
 
 
 def select(available, names=None):
-    """names 为 None 时返回启用的扩展；否则按 names 返回 (不看 enable)，有未知名称时抛出 ValueError"""
+    """If names is None, return the enabled extensions; else return names (ignoring enable), ValueError on unknown names"""
     if names is None:
         return [ext for ext in available.values() if ext.enabled]
     unknown = [n for n in names if n not in available]
@@ -86,8 +89,8 @@ def select(available, names=None):
 
 def parse_overrides(items):
     """
-    --set NAME.KEY=VALUE 的列表 -> {名称: {参数: 值}}；
-    值按 YAML 解析: 1.0 为 float，true 为 bool，[1, 2] 为列表
+    List of --set NAME.KEY=VALUE -> {name: {param: value}};
+    values are parsed as YAML: 1.0 is a float, true a bool, [1, 2] a list
     """
     result = {}
     for item in items or ():
@@ -104,15 +107,15 @@ def parse_overrides(items):
 
 def load(ext, overrides=None):
     """
-    导入扩展的入口脚本并整理配置: 补全默认值，应用 overrides ({参数: 值}，来自 --set)，解析 ignore，调用 configure()。
-    脚本或配置有问题时抛出 ValueError。返回 ext
+    Import the extension's entry script and prepare its config: fill in default values, apply overrides
+    ({param: value}, from --set), parse ignore, call configure(). Raise ValueError on script or config problems. Return ext
     """
     module = _import_script(ext)
     if not callable(getattr(module, "check", None)):
         raise ValueError(f"extension '{ext.name}': {module.__file__} has no check(ctx, cfg, out) function")
     defaults = {**FRAMEWORK_CONFIG, **getattr(module, "DEFAULT_CONFIG", {})}
     cfg = {**defaults, **ext.cfg}
-    # 有 DEFAULT_CONFIG 时，配置文件中的参数也必须是已知的，参数名写错能被发现
+    # With DEFAULT_CONFIG, parameters in the config file must also be known, so misspelled parameter names are caught
     known = defaults if hasattr(module, "DEFAULT_CONFIG") else cfg
     unknown = [k for k in list(ext.cfg) + list(overrides or {}) if k not in known]
     if unknown:
@@ -145,14 +148,14 @@ def _import_script(ext):
     if not os.path.isfile(os.path.join(script_dir, entry)):
         raise ValueError(f"extension '{ext.name}': script not found: {os.path.join(script_dir, entry)}")
 
-    # script/ 注册为包 mapchecker_ext.<名称>，入口脚本中的相对导入在其中查找
+    # Register script/ as package mapchecker_ext.<name>; relative imports in the entry script are resolved within it
     if PACKAGE not in sys.modules:
         root = types.ModuleType(PACKAGE)
         root.__path__ = []
         sys.modules[PACKAGE] = root
     package = f"{PACKAGE}.{ext.name}"
     if getattr(sys.modules.get(package), "__path__", None) != [script_dir]:
-        # 同名扩展换了目录 (如测试中)，去掉之前导入的模块
+        # An extension with the same name moved to another directory (e.g. in tests): drop previously imported modules
         for key in [k for k in sys.modules if k == package or k.startswith(package + ".")]:
             del sys.modules[key]
         pkg = types.ModuleType(package)
@@ -160,18 +163,18 @@ def _import_script(ext):
         sys.modules[package] = pkg
     try:
         return importlib.import_module(f"{package}.{os.path.splitext(entry)[0]}")
-    except Exception as e:  # 语法错误、缺少依赖等，报告为扩展的问题
+    except Exception as e:  # syntax errors, missing dependencies, etc., reported as a problem of the extension
         raise ValueError(f"extension '{ext.name}': failed to import {os.path.join(script_dir, entry)} "
                          f"({type(e).__name__}: {e})") from e
 
 
 def run_extensions(ctx, extensions, out):
-    """依次运行 load() 过的扩展；某个扩展抛出异常时报 ERROR (计入退出码) 并继续运行其他检查"""
+    """Run load()ed extensions in turn; if one raises, report an ERROR (counted in the exit code) and run the other checks"""
     for ext in extensions:
         scoped = out.scoped(ext.name)
         try:
             ext.module.check(ctx, ext.cfg, scoped)
-        except Exception as e:  # 一个扩展的 bug 不影响其他检查的结果
+        except Exception as e:  # a bug in one extension does not affect the results of the other checks
             scoped.error(f"extension {ext.name} crashed: {type(e).__name__}: {e}")
             for line in traceback.format_exc().rstrip().splitlines():
                 out.info(f"    {line}")

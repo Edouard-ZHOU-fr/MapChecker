@@ -1,5 +1,7 @@
 # MapChecker 检查清单
 
+中文 | [Français](checkinglist.fr.md)
+
 本文列出 `check_lanelet_map.py` 目前检查的所有项目，以及每条 WARNING / ERROR 在什么条件下输出。内容按 2026-10-21 的代码整理；文中的"当前值"取自 `config/config.yaml` 和 `ext/<名称>/config/config.yaml`，修改配置后以配置文件为准。
 
 ## 总览

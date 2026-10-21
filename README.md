@@ -1,5 +1,7 @@
 # MapChecker
 
+中文 | [Français](README.fr.md)
+
 Lanelet2 地图检查工具：找出地图中缺少 `turn_direction`（转向灯）和 `right_of_way`（路权）的地方，可选地合并 Autoware 官方检查的结果，并可用 logistic regression 给告警打分，把更可能是真问题的告警和可能是误报的告警区分开。
 
 ## 检查项
@@ -278,7 +280,10 @@ MapChecker/
   check_lanelet_map.py        入口
   train_model.py              生成训练数据并训练 logistic regression，生成 config/model.yaml
   install.sh                  安装依赖 (ROS / Autoware 除外)
-  CHANGELOG.md                更新日志
+  README.md / README.fr.md    本文档 (中文 / 法语)
+  doc/
+    CHANGELOG.md              更新日志 (法语版 CHANGELOG.fr.md)
+    checkinglist.md           检查清单：每项检查及告警的输出条件 (法语版 checkinglist.fr.md)
   ext/                        扩展检查 (配置中 enable 为 true 时运行)，每项有自己的 README.md
     README.md                 如何编写扩展检查 (接口、ctx、out)
     _template/                新扩展的模板 (不会自动运行)

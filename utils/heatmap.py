@@ -1,9 +1,12 @@
 """
-问题热力图: 按问题密度从蓝 (少) 到红 (多) 给地图着色，并在图中和日志中标注问题频发的区域 (需要 matplotlib)。
-Using_LR 时按 p 加权: 有分数的 WARNING 权重为 p (真问题的概率)，没有分数的 WARNING 和 ERROR 权重为 1，
-密度和区域都按权重之和 (即预计的真问题数) 计算；没有模型时权重都为 1，即问题条数。
-扩展检查 (ext/，检查项不在 MARKERS 中) 的问题只用绿色的点标出 (每项扩展一种形状)，不参与着色和区域。
-弹出的窗口中单击问题点或 lanelet 显示 lanelet 编号，见 _enable_click()
+Issue heatmap: colors the map by issue density from blue (few) to red (many), and labels hotspots in the figure and
+in the log (requires matplotlib).
+With Using_LR, weighted by p: a scored WARNING has weight p (probability of a true issue), unscored WARNINGs and ERRORs
+have weight 1; density and hotspots use the sum of weights (i.e. the expected number of true issues); without a model,
+all weights are 1, i.e. the number of issues.
+Issues of extension checks (ext/, checks not in MARKERS) are only marked with green dots (one shape per extension),
+and are not used for coloring or hotspots.
+In the pop-up window, clicking an issue point or a lanelet shows the lanelet id, see _enable_click()
 """
 
 import sys
@@ -14,25 +17,28 @@ import numpy as np
 
 from .geometry import centerline, fmt_xy
 
-HEAT_COLORS = ("#2a78d6", "#9b4fc2", "#e34948")  # 问题密度从少到多: 蓝 -> 紫 -> 红
-MIN_HOTSPOT_ISSUES = 2   # 半径内至少有几条问题才算问题频发的区域
-MAX_CELLS = 1000         # 密度网格长边的最大格数
+HEAT_COLORS = ("#2a78d6", "#9b4fc2", "#e34948")  # issue density from low to high: blue -> purple -> red
+MIN_HOTSPOT_ISSUES = 2   # minimum number of issues within the radius for a hotspot
+MAX_CELLS = 1000         # maximum number of cells along the long side of the density grid
 MAX_LISTED_LANELETS = 12
 MARKERS = {"turn_direction": "o", "right_of_way": "s", "autoware": "^"}
-EXT_COLOR = "#2f9e44"    # 扩展检查 (ext/) 的问题点: 绿色，每项扩展依次用 EXT_MARKERS 中的一种形状
+EXT_COLOR = "#2f9e44"    # extension check (ext/) issue points: green, each extension uses the next shape in EXT_MARKERS
 EXT_MARKERS = ("o", "D", "v", "P", "X", "*")
 SAVE_DPI = 150
-SHOW_MAX_HEIGHT = 900    # 弹出窗口的最大高度 (像素)
-CLICK_PIXELS = 8         # 弹出窗口中: 离问题点多少像素以内算点中；按下和松开相距超过它算拖动 (缩放 / 平移)，不算单击
-MAX_CLICK_LINES = 8      # 一次单击最多显示几条问题
+SHOW_MAX_HEIGHT = 900    # maximum height of the pop-up window (pixels)
+CLICK_PIXELS = 8         # in the pop-up window: within this many pixels of an issue point counts as a hit; press and
+                         # release farther apart than this counts as a drag (zoom / pan), not a click
+MAX_CLICK_LINES = 8      # maximum number of issues shown per click
 HIGHLIGHT_COLOR = "#f08c00"
 
 
 def issue_points(out, lanelets):
     """
-    Printer 记录的 WARNING / ERROR 的位置，返回 (坐标 [N, 2], [(检查项, lanelet ids, p 或 None, 输出的那一行)], 权重 [N])，
-    权重: 有分数的 WARNING 为 p，其余为 1。
-    没有给出坐标的取相关 lanelet 中心线中点的平均；与 lanelet 无关的 (如节点缺少高度、地图加载错误) 不参与
+    Positions of the WARNINGs / ERRORs recorded by Printer; returns
+    (coordinates [N, 2], [(check, lanelet ids, p or None, the output line)], weights [N]),
+    weights: p for a scored WARNING, 1 otherwise.
+    Without given coordinates, the mean of the centerline midpoints of the related lanelets is used; issues not related
+    to a lanelet (e.g. node missing height, map loading error) are not included
     """
     middles = {}
 
@@ -57,8 +63,9 @@ def issue_points(out, lanelets):
 
 def find_hotspots(pts, weights, radius, top):
     """
-    问题频发的区域: 每次取半径 radius 内剩余问题权重之和最大的问题为中心，区域内的问题不再参与之后的区域，
-    直到找到 top 个区域或剩下的区域权重之和都小于 MIN_HOTSPOT_ISSUES。返回 [区域内问题的下标]，权重大的在前
+    Hotspots: repeatedly take as center the issue with the largest sum of remaining issue weights within radius; issues
+    in that hotspot no longer take part in later hotspots, until top hotspots are found or the remaining hotspot weight
+    sums are all below MIN_HOTSPOT_ISSUES. Returns [indices of the issues in each hotspot], largest weight first
     """
     near = np.linalg.norm(pts[:, None] - pts[None], axis=-1) <= radius
     left = np.ones(len(pts), dtype=bool)
@@ -75,7 +82,10 @@ def find_hotspots(pts, weights, radius, top):
 
 
 def density(pts, weights, extent, sigma):
-    """高斯核密度，每条问题在其位置贡献其权重，即数值约为附近的问题数 (的权重之和)；返回 (网格 [H, W], 网格范围)"""
+    """
+    Gaussian kernel density, each issue contributes its weight at its position, i.e. the value is roughly the number
+    of nearby issues (sum of their weights); returns (grid [H, W], grid extent)
+    """
     x0, y0, x1, y1 = extent
     cell = max(x1 - x0, y1 - y0) / MAX_CELLS
     xs = np.arange(x0, x1 + cell, cell)
@@ -86,7 +96,7 @@ def density(pts, weights, extent, sigma):
 
 
 def _extent(lanelets, aois, pts, margin):
-    """AOI (只检查 AOI 时) 或整张地图的范围，并包含所有问题"""
+    """Extent of the AOI (when only checking the AOI) or of the whole map, including all issues"""
     shapes = aois or [ll.polygon for ll in lanelets.values()]
     allp = np.vstack(shapes + [pts])
     lo, hi = allp.min(axis=0) - margin, allp.max(axis=0) + margin
@@ -95,10 +105,10 @@ def _extent(lanelets, aois, pts, margin):
 
 def report_hotspots(lanelets, aois, out, path, radius, top, map_name, show=False):
     """
-    在日志中列出问题频发的区域，并把热力图保存到 path (png)。
-    aois: 只检查 AOI 时为 AOI 多边形，图的范围限制在 AOI；否则为空，画整张地图
-    show: 同时在 pyplot 中创建窗口，之后由 show_windows() 弹出
-    有模型 (Using_LR) 时按 p 加权，见本模块开头
+    List hotspots in the log and save the heatmap to path (png).
+    aois: AOI polygons when only checking the AOI, the figure is limited to the AOI; otherwise empty, draw the whole map
+    show: also create a window in pyplot, popped up later by show_windows()
+    With a model (Using_LR), weighted by p, see the beginning of this module
     """
     weighted = out.model is not None
     unit = "p-weighted issues" if weighted else "issues"
@@ -108,7 +118,7 @@ def report_hotspots(lanelets, aois, out, path, radius, top, map_name, show=False
         out.info("No issue located on the map, heatmap not generated")
         return
 
-    core = np.array([item[0] in MARKERS for item in items], dtype=bool)  # 检查 1~3 的问题，扩展检查的不参与区域
+    core = np.array([item[0] in MARKERS for item in items], dtype=bool)  # Check 1~3 issues; extension checks not in hotspots
     core_idx = np.nonzero(core)[0]
     spots = [core_idx[m] for m in find_hotspots(pts[core_idx], weights[core_idx], radius, top)]
     for k, members in enumerate(spots, 1):
@@ -132,10 +142,11 @@ def report_hotspots(lanelets, aois, out, path, radius, top, map_name, show=False
 
 def show_windows():
     """
-    弹出 pyplot 中创建的窗口 (可缩放、平移): report_hotspots(show=True) 的热力图，以及扩展检查创建的窗口
-    (如 altitude 的 isShow)；关闭所有窗口后返回。没有创建窗口时直接返回，没有图形界面时只输出提示
+    Pop up the windows created in pyplot (zoomable, pannable): the heatmap of report_hotspots(show=True), and windows
+    created by extension checks (e.g. isShow of altitude); returns after all windows are closed. Returns directly if no
+    window was created; without a GUI, only prints a message
     """
-    plt = sys.modules.get("matplotlib.pyplot")  # 没有导入过 pyplot 时不会有窗口，也不用导入
+    plt = sys.modules.get("matplotlib.pyplot")  # if pyplot was never imported there is no window, no need to import it
     if plt is None or not plt.get_fignums():
         return
     import matplotlib
@@ -150,8 +161,10 @@ def show_windows():
 
 def _save_image(path, lanelets, aois, pts, items, weights, core, weighted, spots, radius, map_name, show=False):
     """
-    保存热力图；show 为 True 时再画一张同样的图放进 pyplot 的窗口 (按屏幕缩小)，保存的 png 不受影响。
-    core: 每个问题是否属于检查 1~3，只有它们参与着色；扩展检查的问题只画绿色的点
+    Save the heatmap; if show is True, draw the same figure again in a pyplot window (scaled down to the screen),
+    the saved png is unaffected.
+    core: whether each issue belongs to Check 1~3, only those are used for coloring; extension check issues are only
+    drawn as green dots
     """
     from matplotlib.figure import Figure
 
@@ -179,7 +192,8 @@ def _draw(fig, lanelets, aois, pts, items, weights, core, weighted, spots, radiu
     from matplotlib.lines import Line2D
     from matplotlib.patches import Circle
 
-    # 孤立的单条问题 (密度 <= 1) 为蓝色，问题越密集越红；按 p 加权时 p 低的问题颜色更淡；没有问题的地方透明，露出地图
+    # An isolated single issue (density <= 1) is blue, the denser the issues the redder; when weighted by p, low-p issues
+    # are fainter; areas without issues are transparent, showing the map
     unit = "p-weighted issues" if weighted else "issues"
     norm = Normalize(1.0, max(dens.max(), MIN_HOTSPOT_ISSUES + 1), clip=True)
     cmap = LinearSegmentedColormap.from_list("issues", HEAT_COLORS)
@@ -231,7 +245,7 @@ def _draw(fig, lanelets, aois, pts, items, weights, core, weighted, spots, radiu
         located += f" + {(~core).sum()} ext (green dots)"
     fig.suptitle(f"MapChecker issue heatmap: {map_name}\n{located}, {len(spots)} hotspots, "
                  f"{time.strftime('%Y-%m-%d %H:%M:%S')}", fontsize=11, color="#1f1f1f")
-    ax.legend(loc="best", fontsize=8, framealpha=0.9)  # 自动避开问题点和区域圆圈
+    ax.legend(loc="best", fontsize=8, framealpha=0.9)  # automatically avoids issue points and hotspot circles
 
     bar = fig.colorbar(ScalarMappable(norm, cmap), ax=ax, shrink=0.6, pad=0.01)
     bar.set_label(f"{unit} nearby (Gaussian weighted, sigma = {radius / 2:.0f} m)", color="#6b6b66")
@@ -241,10 +255,11 @@ def _draw(fig, lanelets, aois, pts, items, weights, core, weighted, spots, radiu
 
 def _enable_click(fig, ax, lanelets, pts, items):
     """
-    弹出窗口中单击 (缩放 / 平移模式下也可以，拖动不算) 显示 lanelet 编号，并把相关 lanelet 用橙色描边:
-      - 点中问题点: 显示该处所有问题的 lanelet、检查项和 p，并在终端输出这些问题在日志中的那一行
-      - 否则: 显示点击处的 lanelet (重叠处可能有多条)
-      - 点空白处: 隐藏
+    Clicking in the pop-up window (also in zoom / pan mode, dragging doesn't count) shows lanelet ids, and outlines the
+    related lanelets in orange:
+      - hit an issue point: show the lanelets, check and p of all issues there, and print their log lines in the terminal
+      - otherwise: show the lanelet(s) at the clicked location (possibly several where they overlap)
+      - click on empty space: hide
     """
     from matplotlib.collections import PolyCollection
     from matplotlib.path import Path
@@ -285,7 +300,7 @@ def _enable_click(fig, ax, lanelets, pts, items):
         highlight.set_verts([lanelets[i].polygon for i in ids if i in lanelets])
         label.set_visible(bool(lines))
         if lines:
-            # 文字放在点击处朝向图中心的一侧，避免超出图的范围
+            # place the text on the side of the click facing the figure center, so it doesn't go beyond the figure
             box = ax.bbox
             right, top = event.x > (box.x0 + box.x1) / 2, event.y > (box.y0 + box.y1) / 2
             label.xy = xy

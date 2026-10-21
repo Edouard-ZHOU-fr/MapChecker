@@ -1,5 +1,6 @@
 """
-地图读取 (utils/lanelet_map.py) 的测试: 地图文件中的信息都要能从 LaneletMap / MapContext 拿到，用一张合成的小地图:
+Tests of map loading (utils/lanelet_map.py): all information in the map file must be available from
+LaneletMap / MapContext, using a small synthetic map:
   cd MapChecker && python3 -m unittest discover -s tests -v
 """
 
@@ -19,8 +20,8 @@ import numpy as np  # noqa: E402
 from utils.context import MapContext  # noqa: E402
 from utils.lanelet_map import RegElem, load_map  # noqa: E402
 
-# 一条沿 +x 的道路 lanelet 21 (右边界 way 12 的节点顺序与行驶方向相反)，带自定义中心线、停止线和红绿灯；
-# 22、23 结构不完整；41 为 multipolygon
+# A road lanelet 21 along +x (nodes of right boundary way 12 in the opposite order of the driving direction), with
+# a custom centerline, stop line and traffic light; 22, 23 are structurally incomplete; 41 is a multipolygon
 MAP = """<?xml version="1.0"?>
 <osm version="0.6" generator="test">
   <MetaInfo format_version="1" map_version="3"/>
@@ -50,13 +51,13 @@ POINTS = {1: (0, 3.5, 1.0), 2: (50, 3.5, 2.0), 3: (0, 0, 1.0), 4: (50, 0, 2.0), 
 
 
 def osm(local=True):
-    """MAP 的文本；local 为 False 时节点 1 没有 local_x / local_y (所有坐标改用经纬度投影)"""
+    """Text of MAP; if local is False, node 1 has no local_x / local_y (all coordinates use lat/lon projection instead)"""
     nodes = []
     for nid, (x, y, z) in POINTS.items():
         tags = (f'<tag k="local_x" v="{x}"/><tag k="local_y" v="{y}"/>' if local or nid != 1 else "") \
             + ("" if z is None else f'<tag k="ele" v="{z}"/>') + ('<tag k="color" v="red"/>' if nid == 9 else "")
         version = ' version="2"' if nid == 9 else ""
-        # 1e-5 度约为纬度方向 1.1 m、经度方向 0.73 m (纬度 48 度)
+        # 1e-5 degrees is about 1.1 m in latitude and 0.73 m in longitude (at latitude 48 degrees)
         nodes.append(f'<node id="{nid}" lat="{48 + y * 1e-5}" lon="{2 + x * 1e-5}"{version}>{tags}</node>')
     return MAP.format(nodes="\n  ".join(nodes))
 
@@ -106,12 +107,12 @@ class LaneletMapTest(unittest.TestCase):
         self.assertEqual(list(m.lanelets), ["21"])
         ll = m.lanelets["21"]
         self.assertEqual((ll.left_way, ll.right_way, ll.centerline_way), ("11", "12", "15"))
-        self.assertEqual(ll.right_ids, ["3", "4"])  # 右边界翻转成与行驶方向一致
+        self.assertEqual(ll.right_ids, ["3", "4"])  # right boundary flipped to match the driving direction
         self.assertEqual((ll.left_inverted, ll.right_inverted), (False, True))
         np.testing.assert_allclose(ll.left_z, [1.0, 2.0])
         self.assertEqual(ll.reg_elems, {"31"})
         self.assertEqual(ll.tags["speed_limit"], "30")
-        # 结构不完整的 lanelet 不解析，记下原因
+        # structurally incomplete lanelets are not parsed, the reason is recorded
         self.assertEqual(m.skipped, [("22", "0 right ways"), ("23", "left way 18 references missing nodes 99")])
 
         self.assertEqual(set(m.relations), {"21", "22", "23", "31", "41"})
@@ -122,19 +123,19 @@ class LaneletMapTest(unittest.TestCase):
         self.assertIs(re_, m.relations["31"])
         self.assertIsInstance(re_, RegElem)
         self.assertEqual((re_.subtype, re_.attrib["version"]), ("traffic_light", "5"))
-        # 规则元素成员的几何: 红绿灯的高度、停止线的位置
+        # geometry of the regulatory element members: traffic light height, stop line position
         self.assertEqual(m.ways[re_.refs("refers")[0]].tags["height"], "0.8")
         np.testing.assert_allclose(m.ways[re_.refs("ref_line")[0]].points[:, 0], [30, 30])
 
     def test_projected(self):
-        """有节点缺少 local_x / local_y 时，所有节点都用经纬度投影，几何关系不变"""
+        """When some nodes lack local_x / local_y, all nodes use lat/lon projection, geometric relations are unchanged"""
         path = os.path.join(self.tmp, "latlon.osm")
         with open(path, "w", encoding="utf-8") as f:
             f.write(osm(local=False))
         m = load_map(path)
         self.assertTrue(m.projected)
         width = np.linalg.norm(m.nodes["1"].xy - m.nodes["3"].xy)
-        self.assertAlmostEqual(width, 3.5 * 1.11, delta=0.05)  # 纬度方向 1e-5 度约 1.11 m
+        self.assertAlmostEqual(width, 3.5 * 1.11, delta=0.05)  # 1e-5 degrees in latitude is about 1.11 m
         self.assertEqual(m.nodes["1"].tags.get("local_x"), None)
 
     def test_context(self):

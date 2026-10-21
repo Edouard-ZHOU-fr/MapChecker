@@ -1,22 +1,23 @@
 """
-扩展检查模板: 车辆 lanelet 是否有 required_tags 中的标签 (示例，可以直接运行)
+Extension check template: whether vehicle lanelets have the tags in required_tags (example, can be run as is)
 
-新建扩展: cp -r ext/_template ext/<名称>，然后改这个脚本、config/config.yaml 和 README.md，见 ext/README.md。
-试运行: python3 check_lanelet_map.py --only-ext <名称>
+New extension: cp -r ext/_template ext/<name>, then edit this script, config/config.yaml and README.md, see
+ext/README.md.
+Test run: python3 check_lanelet_map.py --only-ext <name>
 """
 
 from utils.geometry import centerline
 from utils.lanelet_map import by_id
 
-# config.yaml 中缺省项的默认值 (enable / script / ignore 由 utils/ext.py 处理)；
-# 配置中出现这里没有的参数名时报错，避免写错的参数被悄悄忽略
+# default values for items missing in config.yaml (enable / script / ignore are handled by utils/ext.py);
+# a parameter name in the config that is not here raises an error, so misspelled parameters are not silently ignored
 DEFAULT_CONFIG = {
     "required_tags": ["speed_limit"],
 }
 
 
 def configure(cfg):
-    """可选: 检查 / 转换参数 (配置文件和 --set 的值)，有问题时 raise ValueError"""
+    """Optional: check / convert the parameters (values from the config file and --set), raise ValueError on problems"""
     if isinstance(cfg["required_tags"], str):
         cfg["required_tags"] = [cfg["required_tags"]]
     if not cfg["required_tags"]:
@@ -26,12 +27,14 @@ def configure(cfg):
 
 def check(ctx, cfg, out):
     """
-    ctx: utils.context.MapContext，地图和共享的计算结果 (lanelets、vehicle、overlaps、topology、select() 等)
-    cfg: 本扩展的配置 (已补全默认值)
-    out: utils.printer.ScopedPrinter，warn() / error() 自动归入本检查项，忽略列表、Summary、日志和热力图都由框架处理
+    ctx: utils.context.MapContext, the map and shared computed results (lanelets, vehicle, overlaps, topology,
+         select(), etc.)
+    cfg: configuration of this extension (default values already filled in)
+    out: utils.printer.ScopedPrinter, warn() / error() automatically go to this check item; the ignore list, Summary,
+         log and heatmap are all handled by the framework
     """
     out.header(f"Ext {out.category}: vehicle lanelets with tags {', '.join(cfg['required_tags'])}")
-    lanelets = ctx.select(ctx.vehicle)  # only_check_AOI 时只保留完全位于 AOI 内的
+    lanelets = ctx.select(ctx.vehicle)  # with only_check_AOI, only those fully inside the AOI are kept
     for ll in sorted(lanelets.values(), key=by_id):
         missing = [tag for tag in cfg["required_tags"] if tag not in ll.tags]
         if missing:
