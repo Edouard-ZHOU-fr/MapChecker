@@ -23,10 +23,11 @@ from contextlib import redirect_stdout
 
 import yaml
 
-from check_lanelet_map import BASE_DIR, DEFAULT_CONFIG_PATH, run_checks
 from utils.check_right_of_way import covered_pairs
 from utils.check_turn_direction import VALID_TURN_DIRECTIONS
-from utils.config import load_config
+from utils.checks import run_core_checks
+from utils.config import BASE_DIR, DEFAULT_CONFIG_PATH, load_config, resolve
+from utils.context import MapContext
 from utils.features import FEATURES
 from utils.ignore import ignore_by_category, load_ignore
 from utils.lanelet_map import load_map
@@ -35,10 +36,6 @@ from utils.printer import Printer
 DEFAULT_DATASET_CONFIG = os.path.join(BASE_DIR, "config", "dataset.yaml")
 CHECK_OPTS = ("turn_angle", "turn_window", "min_overlap_area", "ignore_isolated_turns", "straight_as_turn_light",
               "only_check_AOI")
-
-
-def resolve(p):
-    return os.path.join(BASE_DIR, os.path.expanduser(str(p)))
 
 
 def git(repo, *args):
@@ -73,7 +70,7 @@ def check_version(repo, map_rel, rev, opts, autoware):
                 f.write(data)
                 f.flush()
                 result = _quiet_stderr(validate, f.name)
-        run_checks(lanelets, reg_elems, aois, opts, out, result)
+        run_core_checks(MapContext(lanelets, reg_elems, aois, opts), out, result)
     issues = {(i.category, "/".join(sorted(i.ids, key=int))): i.features for i in out.issues}
     return issues, {k: ll.turn_direction for k, ll in lanelets.items()}, covered_pairs(reg_elems)
 
@@ -150,7 +147,7 @@ def load_dataset_config(path):
 def build_dataset(config_path=DEFAULT_DATASET_CONFIG):
     """按 dataset.yaml 生成训练数据，返回输出目录；需要 ROS 但无法导入时抛出 RuntimeError"""
     ds, out_dir = load_dataset_config(config_path)
-    cfg = load_config(DEFAULT_CONFIG_PATH, BASE_DIR)
+    cfg = load_config(DEFAULT_CONFIG_PATH)
     opts = {k: cfg[k] for k in CHECK_OPTS}
     map_rel = ds.get("map", "lanelet2_map.osm")
     autoware = ds.get("autoware_checking", False)

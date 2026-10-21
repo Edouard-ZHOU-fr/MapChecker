@@ -41,9 +41,9 @@ NEGATIVE_FEATURES = {
 }
 
 
-def lanelet_context(lanelets, reg_elems, overlaps):
+def lanelet_context(lanelets, reg_elems, overlaps, pred=None):
     """
-    计算 turn_direction 特征用的每个 lanelet 的信息 {lanelet id: {...}}:
+    计算 turn_direction 特征用的每个 lanelet 的信息 {lanelet id: {...}}；pred 为已计算的前继关系，None 时重新计算:
       crossing / merge / diverge: 与之交叉 / 汇入 / 分叉的 lanelet 数；crossing 不含边缘相碰 (见 centerline_enters)
       overlap_length:             与其他 lanelet 的最长重叠长度 (m)，分叉除外、含边缘相碰
       traffic_light:              自身或前继 lanelet 是否引用了红绿灯
@@ -58,7 +58,8 @@ def lanelet_context(lanelets, reg_elems, overlaps):
                 ctx[x]["overlap_length"] = max(ctx[x]["overlap_length"], length)
     tl = {ll.id for ll in lanelets.values()
           if any(r in reg_elems and reg_elems[r].subtype == "traffic_light" for r in ll.reg_elems)}
-    _, pred = build_topology(lanelets)
+    if pred is None:
+        _, pred = build_topology(lanelets)
     for lid in lanelets:
         ctx[lid]["traffic_light"] = lid in tl or bool(pred[lid] & tl)
     return ctx

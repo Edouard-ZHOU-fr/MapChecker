@@ -10,6 +10,7 @@ Lanelet2 地图检查工具：找出地图中缺少 `turn_direction`（转向灯
 | 2. right_of_way | 交叉 / 汇入的 lanelet 对是否有 `right_of_way` 规则元素；已有的 `right_of_way` 是否被优先 lanelet 引用、两条 lanelet 是否真的重叠（完全不重叠时输出 ERROR） |
 | 3. Autoware（`autoware_checking: true`） | 运行 [utils/validate_autoware_map.py](utils/validate_autoware_map.py)（`autoware_lanelet2_validation` 的 Python 版）：地图加载错误、节点高度 `ele`、红绿灯、路由图中有冲突的 lanelet 的 `turn_direction`。其中 `turn_direction` 的结果合并到检查 1，同一 lanelet 只报告一次 |
 | LR 打分（`Using_LR: true`） | 给检查 1、2 中缺少 `turn_direction` / `right_of_way` 的告警打分 `[WARNING p=0.77]`，并按分数从高到低输出，见 [告警打分](#告警打分-using_lr) |
+| 扩展检查（`ext/<名称>/config/config.yaml` 中 `enable: true`） | 例如 crosswalk 在横向上最多超出道路多少，见 [扩展检查](#扩展检查-ext) |
 | 热力图（`heatmap.enabled: true`） | 列出问题频发的区域，并生成热力图：按问题密度从蓝（少）到红（多）给地图着色，见 [问题热力图](#问题热力图-heatmap) |
 
 ## 依赖
@@ -31,6 +32,7 @@ python3 check_lanelet_map.py                          # 使用 config/config.yam
 python3 check_lanelet_map.py path/to/lanelet2_map.osm # 检查另一张地图
 python3 check_lanelet_map.py -c other_config.yaml     # 使用另一个配置文件
 python3 check_lanelet_map.py --no-autoware-checking   # 没有 ROS 环境时
+python3 check_lanelet_map.py --only-ext crosswalk     # 只运行扩展检查 crosswalk (见 ext/README.md)
 ```
 
 命令行参数优先于配置文件：
@@ -52,6 +54,11 @@ python3 check_lanelet_map.py --no-autoware-checking   # 没有 ROS 环境时
 | `--[no-]heatmap` | `heatmap.enabled` |
 | `--[no-]show-heatmap` | `isShow` |
 | `--no-color` | 不输出颜色 |
+| `--ext NAME[,NAME...]` | 运行这些扩展检查，代替配置中 `enable: true` 的 |
+| `--only-ext NAME[,NAME...]` | 只运行这些扩展检查，跳过检查 1~3 |
+| `--no-ext` | 不运行扩展检查 |
+| `--set NAME.KEY=VALUE` | 覆盖扩展检查配置中的参数，例如 `crosswalk.max_extension=1.0`，可重复 |
+| `--list-ext` | 列出所有扩展检查及是否启用 |
 
 ## 配置 `config/config.yaml`
 
@@ -87,9 +94,10 @@ all:            [13252: "roule pas", 17618]   # 所有检查都忽略
 turn_direction: [614: 主路弯道，不需要转向灯]   # 只在检查 1 中忽略
 right_of_way:   []                            # 只在检查 2 中忽略 (涉及该 lanelet 的重叠对和 right_of_way 规则元素)
 autoware:       []                            # 只在检查 3 中忽略 (该 lanelet 引用的红绿灯问题)
+crosswalk:      [19942]                       # 只在扩展检查 crosswalk 中忽略 (键为扩展检查的名称)
 ```
 
-每项可以只写 lanelet id，也可以写成 `id: 原因`。
+每项可以只写 lanelet id（可以是负数），也可以写成 `id: 原因`。扩展检查的忽略列表也可以写在该扩展自己的配置中。没有运行的检查项的条目在报告末尾标为 `check not run`。
 
 ## 输出
 
@@ -129,7 +137,7 @@ Heatmap: .../logs/map_check_20261016_093357.png
   - 单击问题点：显示该处问题的 lanelet 编号、检查项和 p（同一位置有多条时都列出），相关 lanelet 用橙色描边，终端同时输出这些问题在日志中的那一行（方便复制）。
   - 单击其他位置：显示点击处的 lanelet 编号（重叠处可能有多条）；单击空白处隐藏。
   - 缩放 / 平移模式下也可以直接单击，拖动不算单击。
-- **范围**：`only_check_AOI: true` 时只画 AOI 的范围（虚线为 AOI 边界），否则画整张地图。问题点按检查项用不同形状标出：圆形 turn_direction、方形 right_of_way、三角形 autoware。
+- **范围**：`only_check_AOI: true` 时只画 AOI 的范围（虚线为 AOI 边界），否则画整张地图。问题点按检查项用不同形状标出：圆形 turn_direction、方形 right_of_way、三角形 autoware。扩展检查（`ext/`）的问题用绿色的点标出（每项扩展一种形状），不参与着色和区域的判定，Hotspots 中单独列出其条数。
 
 ## 告警打分 (`Using_LR`)
 
@@ -252,6 +260,16 @@ Heatmap: .../logs/map_check_20261016_093357.png
 - 正在修改中的地图（如 Noisy-le-Roi）里 "一直没修" 的告警可能只是还没修到，label 0 不可靠；该仓库 turn_direction 的 AUC 只有 0.56。它的样本最多（278 条），也拖低了其他地图的效果。
 - 发现的规律如果足够明确，更好的做法是把它变成规则或阈值，而不是一直依赖模型。例如几何检查本身仍把边缘相碰当作交叉：检查 1 会报这类弯道，检查 2 会报 "crossing overlap without right_of_way"（le_plessis 中 37 条里有 21 条是边缘相碰），目前只是在打分中降低了它们的 p。
 
+## 扩展检查 (`ext/`)
+
+`ext/` 下每个子目录是一项独立的扩展检查，有自己的脚本（`script/`）、配置（`config/config.yaml`）和 README.md。配置中 `enable: true` 的扩展在检查 1~3 之后运行，结果写入同一份输出和日志，计入 Summary 和退出码；忽略列表、AOI、热力图都与检查 1~3 一样处理。`--ext` / `--only-ext` / `--no-ext` 选择要运行的扩展，`--set` 覆盖其参数。
+
+| 扩展 | 内容 |
+|---|---|
+| [crosswalk](ext/crosswalk/README.md) | crosswalk 在横向上最多超出道路多少，超出 `max_extension` 时报 WARNING |
+
+**新增扩展检查**：复制模板 `cp -r ext/_template ext/<名称>`，只需写一个 `check(ctx, cfg, out)` 函数；地图读取、配置、忽略列表、日志和热力图都由框架处理。`ctx` 中有共享的计算结果（如 lanelet 重叠、前后继关系），不用重复计算。步骤和接口见 [ext/README.md](ext/README.md)。`python3 -m unittest discover -s tests` 会自动加载 `ext/` 下的每个扩展，在一张合成地图上运行一次。
+
 ## 目录结构
 
 ```
@@ -259,6 +277,11 @@ MapChecker/
   check_lanelet_map.py        入口
   train_model.py              生成训练数据并训练 logistic regression，生成 config/model.yaml
   install.sh                  安装依赖 (ROS / Autoware 除外)
+  ext/                        扩展检查 (配置中 enable 为 true 时运行)，每项有自己的 README.md
+    README.md                 如何编写扩展检查 (接口、ctx、out)
+    _template/                新扩展的模板 (不会自动运行)
+    crosswalk/                crosswalk 在横向上最多超出道路多少
+  tests/                      测试 (python3 -m unittest discover -s tests)
   config/
     config.yaml               检查配置
     ignore.yaml               手动忽略的 lanelet
@@ -266,12 +289,15 @@ MapChecker/
     model.yaml                告警打分模型 (train_model.py 生成)
   utils/
     lanelet_map.py            读取 Lanelet2 OSM 地图
+    context.py                MapContext: 地图和各项检查共享的计算结果 (重叠、拓扑、AOI)
+    checks.py                 检查 1~3 的流程
     geometry.py               几何工具 (中心线、航向变化、重叠面积、AOI)
     topology.py               前后继关系和 lanelet 重叠
     check_turn_direction.py   检查 1
     check_right_of_way.py     检查 2
     check_autoware.py         检查 3 的报告
     validate_autoware_map.py  Autoware 检查 (需要 ROS)，也可单独运行
+    ext.py                    扩展检查的发现、加载和运行
     features.py               告警的特征
     model.py                  读取模型并打分
     ignore.py                 忽略列表

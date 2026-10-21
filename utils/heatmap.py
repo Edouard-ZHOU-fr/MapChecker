@@ -2,6 +2,7 @@
 问题热力图: 按问题密度从蓝 (少) 到红 (多) 给地图着色，并在图中和日志中标注问题频发的区域 (需要 matplotlib)。
 Using_LR 时按 p 加权: 有分数的 WARNING 权重为 p (真问题的概率)，没有分数的 WARNING 和 ERROR 权重为 1，
 密度和区域都按权重之和 (即预计的真问题数) 计算；没有模型时权重都为 1，即问题条数。
+扩展检查 (ext/，检查项不在 MARKERS 中) 的问题只用绿色的点标出 (每项扩展一种形状)，不参与着色和区域。
 弹出的窗口中单击问题点或 lanelet 显示 lanelet 编号，见 _enable_click()
 """
 
@@ -17,6 +18,8 @@ MIN_HOTSPOT_ISSUES = 2   # 半径内至少有几条问题才算问题频发的�
 MAX_CELLS = 1000         # 密度网格长边的最大格数
 MAX_LISTED_LANELETS = 12
 MARKERS = {"turn_direction": "o", "right_of_way": "s", "autoware": "^"}
+EXT_COLOR = "#2f9e44"    # 扩展检查 (ext/) 的问题点: 绿色，每项扩展依次用 EXT_MARKERS 中的一种形状
+EXT_MARKERS = ("o", "D", "v", "P", "X", "*")
 SAVE_DPI = 150
 SHOW_MAX_HEIGHT = 900    # 弹出窗口的最大高度 (像素)
 CLICK_PIXELS = 8         # 弹出窗口中: 离问题点多少像素以内算点中；按下和松开相距超过它算拖动 (缩放 / 平移)，不算单击
@@ -104,7 +107,9 @@ def report_hotspots(lanelets, aois, out, path, radius, top, map_name, show=False
         out.info("No issue located on the map, heatmap not generated")
         return
 
-    spots = find_hotspots(pts, weights, radius, top)
+    core = np.array([item[0] in MARKERS for item in items], dtype=bool)  # 检查 1~3 的问题，扩展检查的不参与区域
+    core_idx = np.nonzero(core)[0]
+    spots = [core_idx[m] for m in find_hotspots(pts[core_idx], weights[core_idx], radius, top)]
     for k, members in enumerate(spots, 1):
         by_cat = Counter(items[m][0] for m in members)
         ids = sorted({i for m in members for i in items[m][1]}, key=int)
@@ -115,8 +120,12 @@ def report_hotspots(lanelets, aois, out, path, radius, top, map_name, show=False
                  f"({', '.join(f'{c} {n}' for c, n in by_cat.most_common())}), lanelets: {listed}")
     if not spots:
         out.info(f"No area with at least {MIN_HOTSPOT_ISSUES} {unit} within {radius:.0f} m")
+    ext = Counter(item[0] for item, c in zip(items, core) if not c)
+    if ext:
+        out.info(f"Ext checks ({', '.join(f'{c} {n}' for c, n in ext.items())}): not counted in hotspots, "
+                 f"shown as green dots in the heatmap")
 
-    _save_image(path, lanelets, aois, pts, items, weights, weighted, spots, radius, map_name, show)
+    _save_image(path, lanelets, aois, pts, items, weights, core, weighted, spots, radius, map_name, show)
     out.info(f"Heatmap: {path}")
 
 
@@ -134,15 +143,18 @@ def show_heatmap():
     plt.show()
 
 
-def _save_image(path, lanelets, aois, pts, items, weights, weighted, spots, radius, map_name, show=False):
-    """保存热力图；show 为 True 时再画一张同样的图放进 pyplot 的窗口 (按屏幕缩小)，保存的 png 不受影响"""
+def _save_image(path, lanelets, aois, pts, items, weights, core, weighted, spots, radius, map_name, show=False):
+    """
+    保存热力图；show 为 True 时再画一张同样的图放进 pyplot 的窗口 (按屏幕缩小)，保存的 png 不受影响。
+    core: 每个问题是否属于检查 1~3，只有它们参与着色；扩展检查的问题只画绿色的点
+    """
     from matplotlib.figure import Figure
 
     extent = _extent(lanelets, aois, pts, radius)
-    dens, img_extent = density(pts, weights, extent, radius / 2)
+    dens, img_extent = density(pts[core], weights[core], extent, radius / 2)
     w, h = extent[2] - extent[0], extent[3] - extent[1]
     figsize = (12, float(np.clip(12 * h / w, 5, 14)))
-    args = (lanelets, aois, pts, items, weights, weighted, spots, radius, map_name, extent, dens, img_extent)
+    args = (lanelets, aois, pts, items, weights, core, weighted, spots, radius, map_name, extent, dens, img_extent)
 
     fig = Figure(figsize=figsize, dpi=SAVE_DPI, constrained_layout=True)
     _draw(fig, *args)
@@ -154,7 +166,8 @@ def _save_image(path, lanelets, aois, pts, items, weights, weighted, spots, radi
         _enable_click(fig, _draw(fig, *args), lanelets, pts, items)
 
 
-def _draw(fig, lanelets, aois, pts, items, weights, weighted, spots, radius, map_name, extent, dens, img_extent):
+def _draw(fig, lanelets, aois, pts, items, weights, core, weighted, spots, radius, map_name, extent, dens,
+          img_extent):
     from matplotlib.cm import ScalarMappable
     from matplotlib.collections import PolyCollection
     from matplotlib.colors import LinearSegmentedColormap, Normalize
@@ -185,6 +198,10 @@ def _draw(fig, lanelets, aois, pts, items, weights, weighted, spots, radius, map
         if sel:
             ax.scatter(pts[sel, 0], pts[sel, 1], s=14, marker=marker, facecolors="white", edgecolors="#222222",
                        linewidths=0.6, zorder=4, label=f"{category} ({len(sel)})")
+    for k, category in enumerate(dict.fromkeys(item[0] for item, c in zip(items, core) if not c)):
+        sel = [i for i, item in enumerate(items) if item[0] == category]
+        ax.scatter(pts[sel, 0], pts[sel, 1], s=16, marker=EXT_MARKERS[k % len(EXT_MARKERS)], facecolors=EXT_COLOR,
+                   edgecolors="none", zorder=4, label=f"{category} ({len(sel)}, ext)")
 
     for k, members in enumerate(spots, 1):
         c = pts[members].mean(axis=0)
@@ -204,7 +221,9 @@ def _draw(fig, lanelets, aois, pts, items, weights, weighted, spots, radius, map
     ax.tick_params(colors="#6b6b66", labelsize=8)
     for spine in ax.spines.values():
         spine.set_color("#d0d0cc")
-    located = f"{len(pts)} issues located" + (f" (p-weighted {weights.sum():.1f})" if weighted else "")
+    located = f"{core.sum()} issues located" + (f" (p-weighted {weights[core].sum():.1f})" if weighted else "")
+    if not core.all():
+        located += f" + {(~core).sum()} ext (green dots)"
     fig.suptitle(f"MapChecker issue heatmap: {map_name}\n{located}, {len(spots)} hotspots, "
                  f"{time.strftime('%Y-%m-%d %H:%M:%S')}", fontsize=11, color="#1f1f1f")
     ax.legend(loc="best", fontsize=8, framealpha=0.9)  # 自动避开问题点和区域圆圈

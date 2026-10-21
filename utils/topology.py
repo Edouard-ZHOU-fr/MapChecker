@@ -35,13 +35,14 @@ def relation_between(a, b, succ, pred):
     return None
 
 
-def find_overlaps(lanelets, min_area, step=0.5):
+def find_overlaps(lanelets, min_area, step=0.5, topology=None):
     """
     找出所有几何重叠的车辆 lanelet 对 (不含前后相接、左右相邻)。
     返回 [(a_id, b_id, rel, 面积, 重叠中心, 重叠区沿主方向的长度)]，rel 为 None (交叉) / "merge" / "diverge"。
+    topology: 已计算的 build_topology(lanelets)，None 时重新计算
     """
     lls = sorted((ll for ll in lanelets.values() if ll.is_vehicle), key=by_id)
-    succ, pred = build_topology(lanelets)
+    succ, pred = topology or build_topology(lanelets)
     bbox = np.array([np.r_[ll.polygon.min(axis=0), ll.polygon.max(axis=0)] for ll in lls])
     samples = {}
     result = []

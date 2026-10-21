@@ -1,0 +1,13 @@
+# 扩展检查 crosswalk 的配置，说明见 ext/crosswalk/README.md
+# 地图 (input)、日志和 only_check_AOI 使用 config/config.yaml 中的设置；
+# 命令行 --set crosswalk.<参数>=<值> 优先于这里的设置
+
+enable: true         # true: check_lanelet_map.py 运行本检查 (--ext / --only-ext 指定时不看这一项)
+
+# crosswalk 每一端最多可以超出道路 (与它重叠的所有车道) 多少米，沿 crosswalk 方向测量；
+# 超出更多时报 WARNING，其余 crosswalk 只输出测量值
+max_extension: 0.5
+
+# 本检查忽略的 crosswalk id，写法同 config/ignore.yaml: [19942, 19991: 原因]
+# (也可以写在 config/ignore.yaml 的 crosswalk: 下；all: 下的 lanelet 在本检查中同样忽略)
+ignore: []
