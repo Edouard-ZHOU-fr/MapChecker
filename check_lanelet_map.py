@@ -8,6 +8,7 @@ Lanelet2 地图检查工具
      已有 right_of_way 是否被优先 lanelet 引用、两条 lanelet 是否真的重叠 (完全不重叠时输出红色 ERROR)
   3. Autoware (autoware_checking 为 true 时): 运行 utils/validate_autoware_map.py 并合并结果，
      其 turn_direction 结果合并到检查 1 (同一 lanelet 只报告一次)，其余 (load / elevation / traffic_light) 在检查 3 中报告
+  扩展检查 (ext/<名称>/): 其 config/config.yaml 中 enable 为 true 时在检查 1~3 之后运行，见 utils/ext.py 和各扩展的 README.md
 各参数的含义见 config/config.yaml。只依赖 numpy 和 PyYAML；只有 autoware_checking 为 true 时才需要 source ROS，
 只有 heatmap.enabled 为 true 时才需要 matplotlib。
 
@@ -32,6 +33,7 @@ Using_LR 为 true 时热力图和区域按 p 加权 (有分数的 WARNING 计 p 
     config/ignore.yaml     手动忽略的 lanelet
     config/model.yaml      告警打分模型 (train_model.py 生成)
     utils/                 地图读取、几何、拓扑、各项检查、输出、特征与模型、训练数据与训练
+    ext/                   扩展检查，每项有自己的 script/、config/ 和 README.md
     train_model.py         从地图仓库的 git 历史生成训练数据并训练 logistic regression，生成 config/model.yaml
     libs/                  install.sh 安装的第三方库
 """
@@ -51,6 +53,7 @@ from utils.check_autoware import check_autoware
 from utils.check_right_of_way import check_right_of_way
 from utils.check_turn_direction import check_turn_direction
 from utils.config import load_config
+from utils.ext import load_extensions
 from utils.features import lanelet_context
 from utils.geometry import lanelets_in_aoi
 from utils.heatmap import report_hotspots, show_heatmap
@@ -61,10 +64,14 @@ from utils.printer import Printer
 from utils.topology import find_overlaps
 
 DEFAULT_CONFIG_PATH = os.path.join(BASE_DIR, "config", "config.yaml")
+EXT_DIR = os.path.join(BASE_DIR, "ext")
 
 
-def run(map_path, opts, ignore_entries, ignore_path, out, validate_autoware=None, heatmap=None):
-    """heatmap: {"path", "radius", "top", "show"}，None 表示不生成热力图"""
+def run(map_path, opts, ignore_entries, ignore_path, out, validate_autoware=None, heatmap=None, extensions=()):
+    """
+    heatmap:    {"path", "radius", "top", "show"}，None 表示不生成热力图
+    extensions: 启用的扩展检查 (utils/ext.py 的 load_extensions())
+    """
     lanelets, reg_elems, aois = load_map(map_path)
     out.info(f"Date: {time.strftime('%Y-%m-%d %H:%M:%S')}")
     out.info(f"Map: {os.path.abspath(map_path)}")
@@ -76,6 +83,8 @@ def run(map_path, opts, ignore_entries, ignore_path, out, validate_autoware=None
     # Autoware 检查先运行，turn_direction 结果在检查 1 中与几何检查合并
     autoware = validate_autoware(map_path) if validate_autoware else None
     aoi_ids = run_checks(lanelets, reg_elems, aois, opts, out, autoware)
+    for ext in extensions:
+        ext.module.check(lanelets, reg_elems, aois if opts["only_check_AOI"] else None, ext.cfg, out)
 
     out.header("Summary")
     out.info(f"turn_direction warnings: {out.count['turn_direction']}")
@@ -84,6 +93,8 @@ def run(map_path, opts, ignore_entries, ignore_path, out, validate_autoware=None
     if autoware:
         out.info(f"autoware warnings:       {out.count['autoware']}")
         out.info(f"autoware errors:         {out.errors['autoware']}")
+    for ext in extensions:
+        out.info(f"{ext.category + ' warnings:':<24} {out.count[ext.category]}")
     scores = [i.p for i in out.issues if i.p is not None]
     if scores:
         out.info(f"scored warnings:         {len(scores)}, {sum(p < 0.5 for p in scores)} of them with p < 0.5 "
@@ -94,6 +105,9 @@ def run(map_path, opts, ignore_entries, ignore_path, out, validate_autoware=None
     if heatmap:
         report_hotspots(lanelets, aois if opts["only_check_AOI"] else [], out, heatmap["path"],
                         heatmap["radius"], heatmap["top"], os.path.basename(map_path), heatmap["show"])
+    if aoi_ids is not None:
+        # 扩展检查的忽略列表中可能有非车辆 lanelet (如 crosswalk)，它们不在 aoi_ids 中
+        aoi_ids |= lanelets_in_aoi({k: v for k, v in lanelets.items() if not v.is_vehicle}, aois)
     report_ignored(ignore_entries, ignore_path, lanelets, aoi_ids, out)
     return out.total
 
@@ -206,6 +220,13 @@ def main():
         except ImportError as e:
             parser.error(f"autoware_checking requires ROS ({e}), or run with --no-autoware-checking")
 
+    # 扩展检查: ext/<名称>/config/config.yaml 中 enable 为 true 的才运行，其忽略列表以扩展检查名称为范围
+    try:
+        extensions = load_extensions(EXT_DIR)
+    except (ValueError, KeyError, yaml.YAMLError) as e:
+        parser.error(f"invalid extension: {e}")
+    ignore_entries += [(ext.category, lid, reason) for ext in extensions for lid, reason in ext.cfg["ignore"].items()]
+
     heatmap = None
     if cfg["heatmap"]["enabled"] if args.heatmap is None else args.heatmap:
         try:
@@ -226,9 +247,10 @@ def main():
         log_path = stamp + ".log"
         log_file = open(log_path, "w", encoding="utf-8")
 
-    out = Printer(not args.no_color and sys.stdout.isatty(), log_file, ignore_by_category(ignore_entries), model)
+    out = Printer(not args.no_color and sys.stdout.isatty(), log_file,
+                  ignore_by_category(ignore_entries, [ext.category for ext in extensions]), model)
     try:
-        total = run(map_path, opts, ignore_entries, ignore_path, out, validate_autoware, heatmap)
+        total = run(map_path, opts, ignore_entries, ignore_path, out, validate_autoware, heatmap, extensions)
     finally:
         if log_file:
             log_file.close()

@@ -32,26 +32,27 @@ def load_ignore(path):
     return [(scope, lid, reason) for (scope, lid), reason in entries.items()]
 
 
-def _categories(scope):
-    return CATEGORIES if scope == "all" else (scope,)
-
-
-def ignore_by_category(entries):
-    """[(范围, id, 原因)] -> {检查项: {id: 原因}}，all 同时作用于所有检查项"""
-    result = {c: {} for c in CATEGORIES}
+def ignore_by_category(entries, extra_categories=()):
+    """
+    [(范围, id, 原因)] -> {检查项: {id: 原因}}，all 同时作用于所有检查项。
+    extra_categories: 启用的扩展检查 (utils/ext.py)，all 也作用于它们；entries 中可以有以扩展检查名称为范围的项
+    """
+    categories = CATEGORIES + tuple(extra_categories)
+    result = {c: {} for c in categories}
     for scope, lid, reason in entries:
-        for category in _categories(scope):
+        for category in categories if scope == "all" else (scope,):
             result[category][lid] = reason
     return result
 
 
 def report_ignored(entries, ignore_path, lanelets, aoi_ids, out):
-    """在报告末尾列出被忽略的 lanelet 及其屏蔽的问题数"""
+    """在报告末尾列出被忽略的 lanelet 及其屏蔽的问题数；扩展检查自己的忽略列表以扩展检查名称为范围"""
     out.header("Ignored lanelets")
-    if not os.path.isfile(ignore_path):
+    if os.path.isfile(ignore_path):
+        out.info(f"Ignore file: {ignore_path}")
+    elif not entries:
         out.info(f"None (ignore file not found: {ignore_path})")
         return
-    out.info(f"Ignore file: {ignore_path}")
     if not entries:
         out.info("None")
         return
@@ -61,5 +62,6 @@ def report_ignored(entries, ignore_path, lanelets, aoi_ids, out):
         elif aoi_ids is not None and lid not in aoi_ids:
             status = "outside AOI"
         else:
-            status = f"{sum(out.suppressed[(c, lid)] for c in _categories(scope))} issue(s) suppressed"
+            n = sum(out.suppressed[(c, lid)] for c in (out.ignore if scope == "all" else (scope,)))
+            status = f"{n} issue(s) suppressed"
         out.info(f"lanelet {lid:<8} [{scope}] {status}" + (f" | {reason}" if reason else ""))
