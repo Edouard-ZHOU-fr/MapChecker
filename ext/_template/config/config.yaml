@@ -1,0 +1,11 @@
+# 扩展检查的配置 (模板)，说明见 README.md
+# 地图 (input)、日志和 only_check_AOI 使用 config/config.yaml 中的设置；
+# 命令行 --set <名称>.<参数>=<值> 优先于这里的设置
+
+enable: false        # true: check_lanelet_map.py 运行本检查 (以 _ 开头的目录如 _template 不会自动运行)
+
+# 本扩展的参数，默认值见脚本中的 DEFAULT_CONFIG
+required_tags: [speed_limit]
+
+# 本检查忽略的 lanelet id，写法同 config/ignore.yaml: [614, 615: 原因]
+ignore: []

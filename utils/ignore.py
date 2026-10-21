@@ -1,52 +1,71 @@
-"""手动忽略的 lanelet (ignore.yaml)"""
+"""手动忽略的 lanelet (config/ignore.yaml，以及扩展检查配置中的 ignore)"""
 
 import os
+import re
 
 import yaml
 
 CATEGORIES = ("turn_direction", "right_of_way", "autoware")
-IGNORE_SCOPES = ("all",) + CATEGORIES
+LANELET_ID = re.compile(r"-?\d+")  # JOSM 等编辑器新建、还没上传的元素 id 为负数
 
 
-def load_ignore(path):
+def parse_items(items, where):
     """
-    读取 ignore.yaml，返回 [(范围, lanelet id, 原因)]；文件不存在时返回空列表。
-    每项可写成 `- 614` 或 `- 614: 原因`。
+    一个忽略列表 -> {lanelet id: 原因}；where 用于错误信息。
+    items 为列表 `[614, 615: 原因]` (也可以是映射 `{614: 原因}`)；同一 lanelet 重复出现时合并，保留写了的原因
     """
-    if not os.path.isfile(path):
-        return []
-    with open(path, encoding="utf-8") as f:
-        data = yaml.safe_load(f) or {}
-    if not isinstance(data, dict):
-        raise ValueError(f"{path}: top level must be a mapping with keys {', '.join(IGNORE_SCOPES)}")
-    entries = {}  # (范围, id) -> 原因；同一 lanelet 重复出现时合并，保留写了的原因
-    for scope, items in data.items():
-        if scope not in IGNORE_SCOPES:
-            raise ValueError(f"{path}: unknown key '{scope}', expected one of {', '.join(IGNORE_SCOPES)}")
-        for item in items or []:
-            lid, reason = next(iter(item.items())) if isinstance(item, dict) and len(item) == 1 else (item, "")
-            if isinstance(lid, bool) or not str(lid).isdigit():
-                raise ValueError(f"{path}: invalid lanelet id '{lid}' in '{scope}'")
-            key = (scope, str(lid))
-            entries[key] = entries.get(key) or ("" if reason is None else str(reason))
-    return [(scope, lid, reason) for (scope, lid), reason in entries.items()]
-
-
-def ignore_by_category(entries, extra_categories=()):
-    """
-    [(范围, id, 原因)] -> {检查项: {id: 原因}}，all 同时作用于所有检查项。
-    extra_categories: 启用的扩展检查 (utils/ext.py)，all 也作用于它们；entries 中可以有以扩展检查名称为范围的项
-    """
-    categories = CATEGORIES + tuple(extra_categories)
-    result = {c: {} for c in categories}
-    for scope, lid, reason in entries:
-        for category in categories if scope == "all" else (scope,):
-            result[category][lid] = reason
+    if items is None:
+        return {}
+    if isinstance(items, dict):
+        items = [{k: v} for k, v in items.items()]
+    elif not isinstance(items, list):
+        raise ValueError(f"{where}: must be a list of lanelet ids such as [614, 615: reason], got '{items}'")
+    result = {}
+    for item in items:
+        lid, reason = next(iter(item.items())) if isinstance(item, dict) and len(item) == 1 else (item, "")
+        if isinstance(lid, bool) or not LANELET_ID.fullmatch(str(lid)):
+            raise ValueError(f"{where}: invalid lanelet id '{lid}'")
+        result[str(lid)] = result.get(str(lid)) or ("" if reason is None else str(reason))
     return result
 
 
-def report_ignored(entries, ignore_path, lanelets, aoi_ids, out):
-    """在报告末尾列出被忽略的 lanelet 及其屏蔽的问题数；扩展检查自己的忽略列表以扩展检查名称为范围"""
+def load_ignore(path, extra_scopes=()):
+    """
+    读取 ignore.yaml，返回 [(范围, lanelet id, 原因)]；文件不存在时返回空列表。
+    范围为 all、检查 1~3 的名称，或 extra_scopes 中的扩展检查名称。每项可写成 `- 614` 或 `- 614: 原因`。
+    """
+    if not os.path.isfile(path):
+        return []
+    scopes = ("all",) + CATEGORIES + tuple(extra_scopes)
+    with open(path, encoding="utf-8") as f:
+        data = yaml.safe_load(f) or {}
+    if not isinstance(data, dict):
+        raise ValueError(f"{path}: top level must be a mapping with keys {', '.join(scopes)}")
+    entries = []
+    for scope, items in data.items():
+        if scope not in scopes:
+            raise ValueError(f"{path}: unknown key '{scope}', expected one of {', '.join(scopes)}")
+        entries += [(scope, lid, reason) for lid, reason in parse_items(items, f"{path}: '{scope}'").items()]
+    return entries
+
+
+def ignore_by_category(entries, categories=CATEGORIES):
+    """
+    [(范围, id, 原因)] -> {检查项: {id: 原因}}，只包括 categories (要运行的检查项)；all 同时作用于其中所有检查项
+    """
+    result = {c: {} for c in categories}
+    for scope, lid, reason in entries:
+        for category in categories if scope == "all" else (scope,):
+            if category in result:
+                result[category][lid] = reason
+    return result
+
+
+def report_ignored(entries, ignore_path, ctx, out):
+    """
+    在报告末尾列出被忽略的 lanelet 及其屏蔽的问题数；扩展检查配置中的忽略列表以扩展检查名称为范围。
+    ctx: utils.context.MapContext
+    """
     out.header("Ignored lanelets")
     if os.path.isfile(ignore_path):
         out.info(f"Ignore file: {ignore_path}")
@@ -57,9 +76,11 @@ def report_ignored(entries, ignore_path, lanelets, aoi_ids, out):
         out.info("None")
         return
     for scope, lid, reason in entries:
-        if lid not in lanelets:
+        if scope != "all" and scope not in out.ignore:
+            status = "check not run"
+        elif lid not in ctx.lanelets:
             status = "not found in map"
-        elif aoi_ids is not None and lid not in aoi_ids:
+        elif not ctx.in_aoi(lid):
             status = "outside AOI"
         else:
             n = sum(out.suppressed[(c, lid)] for c in (out.ignore if scope == "all" else (scope,)))

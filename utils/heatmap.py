@@ -2,7 +2,7 @@
 问题热力图: 按问题密度从蓝 (少) 到红 (多) 给地图着色，并在图中和日志中标注问题频发的区域 (需要 matplotlib)。
 Using_LR 时按 p 加权: 有分数的 WARNING 权重为 p (真问题的概率)，没有分数的 WARNING 和 ERROR 权重为 1，
 密度和区域都按权重之和 (即预计的真问题数) 计算；没有模型时权重都为 1，即问题条数。
-扩展检查 (ext/，检查项不在 MARKERS 中) 的问题只用绿色的点标出，不参与着色和区域。
+扩展检查 (ext/，检查项不在 MARKERS 中) 的问题只用绿色的点标出 (每项扩展一种形状)，不参与着色和区域。
 弹出的窗口中单击问题点或 lanelet 显示 lanelet 编号，见 _enable_click()
 """
 
@@ -18,7 +18,8 @@ MIN_HOTSPOT_ISSUES = 2   # 半径内至少有几条问题才算问题频发的�
 MAX_CELLS = 1000         # 密度网格长边的最大格数
 MAX_LISTED_LANELETS = 12
 MARKERS = {"turn_direction": "o", "right_of_way": "s", "autoware": "^"}
-EXT_COLOR = "#2f9e44"    # 扩展检查 (ext/) 的问题点: 绿色圆点
+EXT_COLOR = "#2f9e44"    # 扩展检查 (ext/) 的问题点: 绿色，每项扩展依次用 EXT_MARKERS 中的一种形状
+EXT_MARKERS = ("o", "D", "v", "P", "X", "*")
 SAVE_DPI = 150
 SHOW_MAX_HEIGHT = 900    # 弹出窗口的最大高度 (像素)
 CLICK_PIXELS = 8         # 弹出窗口中: 离问题点多少像素以内算点中；按下和松开相距超过它算拖动 (缩放 / 平移)，不算单击
@@ -197,10 +198,10 @@ def _draw(fig, lanelets, aois, pts, items, weights, core, weighted, spots, radiu
         if sel:
             ax.scatter(pts[sel, 0], pts[sel, 1], s=14, marker=marker, facecolors="white", edgecolors="#222222",
                        linewidths=0.6, zorder=4, label=f"{category} ({len(sel)})")
-    for category in dict.fromkeys(item[0] for item, c in zip(items, core) if not c):
+    for k, category in enumerate(dict.fromkeys(item[0] for item, c in zip(items, core) if not c)):
         sel = [i for i, item in enumerate(items) if item[0] == category]
-        ax.scatter(pts[sel, 0], pts[sel, 1], s=16, marker="o", facecolors=EXT_COLOR, edgecolors="none", zorder=4,
-                   label=f"{category} ({len(sel)}, ext)")
+        ax.scatter(pts[sel, 0], pts[sel, 1], s=16, marker=EXT_MARKERS[k % len(EXT_MARKERS)], facecolors=EXT_COLOR,
+                   edgecolors="none", zorder=4, label=f"{category} ({len(sel)}, ext)")
 
     for k, members in enumerate(spots, 1):
         c = pts[members].mean(axis=0)

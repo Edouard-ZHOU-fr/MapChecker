@@ -87,3 +87,49 @@ class Printer:
     @property
     def total(self):
         return sum(self.count.values()) + sum(self.errors.values())
+
+    def scoped(self, category):
+        """绑定到一个检查项的输出 (ScopedPrinter)，传给扩展检查 (ext/) 的 check()"""
+        return ScopedPrinter(self, category)
+
+
+class ScopedPrinter:
+    """
+    绑定到一个检查项 (扩展检查的名称) 的 Printer: warn() / error() 不用再传检查项，
+    忽略列表、计数、日志和热力图都与检查 1~3 一样处理
+    """
+
+    def __init__(self, printer, category):
+        self.printer = printer
+        self.category = category
+
+    def header(self, text):
+        self.printer.header(text)
+
+    def info(self, text):
+        self.printer.info(text)
+
+    def ok(self, text):
+        self.printer.ok(text)
+
+    def warn(self, text, ids=(), pos=None):
+        """ids: 相关 lanelet id (用于忽略列表和热力图)；pos: 问题的坐标 [x, y]，None 时取 ids 中 lanelet 的位置"""
+        self.printer.warn(self.category, text, ids, pos=pos)
+
+    def error(self, text, ids=(), pos=None):
+        self.printer.error(self.category, text, ids, pos)
+
+    @property
+    def warnings(self):
+        """已输出的 WARNING 数"""
+        return self.printer.count[self.category]
+
+    @property
+    def errors(self):
+        """已输出的 ERROR 数"""
+        return self.printer.errors[self.category]
+
+    @property
+    def ignored(self):
+        """因忽略列表而未输出的条数"""
+        return sum(n for (category, _), n in self.printer.suppressed.items() if category == self.category)

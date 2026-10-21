@@ -20,7 +20,10 @@ import argparse
 import os
 import sys
 
-from check_lanelet_map import BASE_DIR
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+# install.sh 把第三方库装在 libs/ 中，放在最前面，优先于系统和用户目录中的版本
+sys.path.insert(0, os.path.join(BASE_DIR, "libs"))
+
 from utils.build_dataset import DEFAULT_DATASET_CONFIG, build_dataset, load_dataset_config
 from utils.tranning import train_models
 
