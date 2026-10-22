@@ -35,9 +35,11 @@ def relation_between(a, b, succ, pred):
     return None
 
 
-def find_overlaps(lanelets, min_area, step=0.5, topology=None):
+def find_overlaps(lanelets, min_area, min_width=0.0, step=0.5, topology=None):
     """
-    Find all geometrically overlapping vehicle lanelet pairs (excluding consecutive and adjacent ones).
+    Find all geometrically overlapping vehicle lanelet pairs (excluding consecutive and adjacent ones): overlap area
+    >= min_area and mean overlap width (area / length) >= min_width; the narrow overlaps of edge contact (parallel
+    lanes on a narrow road, a curve grazing the opposite lane) are below min_width.
     Returns [(a_id, b_id, rel, area, overlap center, length of the overlap along the principal direction)],
     rel is None (crossing) / "merge" / "diverge".
     topology: precomputed build_topology(lanelets), recomputed if None
@@ -58,6 +60,9 @@ def find_overlaps(lanelets, min_area, step=0.5, topology=None):
             if rel in ("follow", "adjacent"):
                 continue
             area, pts = overlap_area(a, b, step, samples)
-            if area >= min_area:
-                result.append((a.id, b.id, rel, area, pts.mean(axis=0), principal_extent(pts)))
+            if area < min_area:
+                continue
+            length = principal_extent(pts)
+            if area >= min_width * length:
+                result.append((a.id, b.id, rel, area, pts.mean(axis=0), length))
     return result

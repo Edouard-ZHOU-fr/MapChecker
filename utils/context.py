@@ -70,7 +70,8 @@ class MapContext:
         the whole map: [(a_id, b_id, rel, area m², overlap center [x, y], overlap length along the principal direction m)],
         rel is None (crossing) / "merge" / "diverge"
         """
-        return find_overlaps(self.lanelets, self.opts["min_overlap_area"], topology=self.topology)
+        return find_overlaps(self.lanelets, self.opts["min_overlap_area"], self.opts["min_overlap_width"],
+                             topology=self.topology)
 
     def in_aoi(self, lanelet_id):
         """

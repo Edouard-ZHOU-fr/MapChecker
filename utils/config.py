@@ -15,6 +15,7 @@ DEFAULT_CONFIG = {
     "turn_angle": 30.0,
     "turn_window": 30.0,
     "min_overlap_area": 1.0,
+    "min_overlap_width": 1.0,
     "ignore_isolated_turns": False,
     "straight_as_turn_light": True,
     "ignore_file": "config/ignore.yaml",

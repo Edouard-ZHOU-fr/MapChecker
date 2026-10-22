@@ -15,6 +15,7 @@ Ce fichier recense les principales évolutions de chaque version de MapChecker, 
 
 ### Modifié
 
+- **Largeur moyenne minimale de chevauchement `min_overlap_width`** (1.0 m par défaut, en ligne de commande `--min-overlap-width`) : un chevauchement dont la largeur moyenne (surface / longueur de la zone de chevauchement dans sa direction principale) est inférieure ne compte plus comme chevauchement. Les contacts de bord comme les voies opposées parallèles d'une route étroite qui se chevauchent le long de la route étaient auparavant signalés par la vérification 2 comme « crossing overlap without right_of_way », avec un p plutôt élevé à cause de leur grande surface, et par la vérification 1 comme « intersects other lanes » ; ils ne sont plus signalés par aucune des deux. Le modèle de notation a été réentraîné avec le nouveau seuil.
 - Les lanelets à la structure incomplète (pas exactement une bordure gauche et une bordure droite, ou référence à un way / nœud inexistant) étaient auparavant ignorées silencieusement ou faisaient planter le programme ; elles sont désormais listées au début du rapport : `Lanelets not loaded (incomplete, not checked): ...`.
 - **Incompatible** : `utils.lanelet_map.load_map()` renvoie un `LaneletMap` (auparavant `(lanelets, reg_elems, aois)`), et les paramètres de `MapContext(lanelet_map, opts, ...)` changent en conséquence ; `utils.heatmap.show_heatmap()` est renommée `show_windows()`. Les vérifications et extensions qui n'accèdent à la carte que via `ctx` ne sont pas concernées.
 

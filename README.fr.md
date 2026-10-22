@@ -46,6 +46,7 @@ Les options de ligne de commande sont prioritaires sur le fichier de configurati
 | `--turn-angle DEG` | `turn_angle` |
 | `--turn-window M` | `turn_window` |
 | `--min-overlap-area M2` | `min_overlap_area` |
+| `--min-overlap-width M` | `min_overlap_width` |
 | `--[no-]ignore-isolated-turns` | `ignore_isolated_turns` |
 | `--[no-]straight-as-turn-light` | `straight_as_turn_light` |
 | `--[no-]only-check-aoi` | `only_check_AOI` |
@@ -78,6 +79,7 @@ Les chemins relatifs sont relatifs à `MapChecker/`.
 | `turn_angle` | `30.0` | Variation de cap minimale pour qu'il y ait virage (degrés) |
 | `turn_window` | `30.0` | Fenêtre maximale de longueur d'arc pour calculer la variation de cap (m) ; une courbe douce sur une longue lanelet ne compte pas comme virage |
 | `min_overlap_area` | `1.0` | Surface minimale pour que deux lanelets se chevauchent (m²) |
+| `min_overlap_width` | `1.0` | Largeur moyenne minimale pour que deux lanelets se chevauchent (m, surface de chevauchement / longueur de la zone de chevauchement dans sa direction principale), exclut les contacts de bord ; `0` pour ne pas limiter |
 | `ignore_isolated_turns` | `false` | `true` : le `turn_direction` des virages qui ne croisent pas d'autres voies et ne convergent pas avec elles (une divergence ne compte pas) n'est pas vérifié |
 | `straight_as_turn_light` | `true` | `true` : `straight` compte aussi comme clignotant ; les virages et les lanelets droites qui intersectent doivent avoir un `turn_direction`, la direction n'est pas vérifiée<br>`false` : vérifie que la direction correspond à la géométrie ; les lanelets droites n'ont pas à être marquées `straight` |
 | `only_check_AOI` | `false` | `true` : ne vérifie que les lanelets entièrement situées dans les AOI de la carte (way fermé `subtype=AOI`) ; si la carte n'a pas d'AOI, toute la carte est vérifiée |
@@ -211,7 +213,7 @@ Les corrections sont comptées en nombre de versions et non en nombre d'alertes,
 | turn_direction | `abs_angle` variation de cap (degrés), `curve` virage ou non, `log_length` longueur, `n_crossing` / `n_merge` / `n_diverge` nombre de lanelets avec lesquelles elle a un vrai croisement / une convergence / une divergence, `log_overlap_length` plus grande longueur de chevauchement avec une autre lanelet (divergences exclues ; longueur de la zone de chevauchement dans sa direction principale), `traffic_light` la lanelet ou son prédécesseur référence un feu de circulation, `isolated` n'a de vrai croisement / de convergence avec aucune voie, c'est-à-dire pas d'intersection |
 | right_of_way | `log_area` surface de chevauchement, `merge` convergence ou croisement, `heading_diff` écart de cap au chevauchement, `max_abs_angle` plus grande variation de cap des deux lanelets |
 
-**Vrai croisement et simple contact de bord** : la vérification géométrique considère comme croisement toute paire de lanelets non divergentes dont le chevauchement est ≥ `min_overlap_area`. Une partie de ces paires ne font que se toucher par le bord, par exemple un virage au début d'une divergence qui frôle la voie opposée, ou des voies parallèles d'une route étroite qui se chevauchent le long de la route. Dans les caractéristiques, il n'y a vrai croisement que si la ligne centrale d'au moins une des lanelets entre dans l'emprise de l'autre (le véhicule entre dans la voie de l'autre) (`centerline_enters` dans `utils/geometry.py`). Les chevauchements par contact de bord sont étroits : la médiane de leur largeur moyenne est de 0.5 à 0.9 m, contre 1.6 à 2.0 m pour les vrais croisements.
+**Vrai croisement et simple contact de bord** : certains chevauchements ne sont qu'un contact de bord, par exemple un virage au début d'une divergence qui frôle la voie opposée, ou des voies parallèles d'une route étroite qui se chevauchent le long de la route (les lignes centrales de deux voies opposées ne sont qu'à 2 à 3 m l'une de l'autre, d'où une bande de chevauchement de plusieurs dizaines de mètres de long et d'environ un demi-mètre de large). Les chevauchements par contact de bord sont étroits : sur 15 cartes, la médiane de leur largeur moyenne (surface de chevauchement / longueur du chevauchement) est de 0.74 m et 3/4 ne dépassent pas 1.0 m, alors que 95 % des vrais croisements / convergences / divergences dépassent 1.3 m. La vérification géométrique exige donc une largeur moyenne de chevauchement ≥ `min_overlap_width` (1.0 m par défaut) ; en dessous, il n'y a pas chevauchement, et les vérifications 1 et 2 ne le traitent plus comme un croisement. Les quelques contacts de bord plus larges qui restent sont distingués par les caractéristiques : il n'y a vrai croisement que si la ligne centrale d'au moins une des lanelets entre dans l'emprise de l'autre (le véhicule entre dans la voie de l'autre) (`centerline_enters` dans `utils/geometry.py`).
 
 Le dénivelé entre nœuds a aussi été essayé, puis abandonné : il varie selon le traitement appliqué à chaque version de la carte (lissage de l'altitude, par exemple), et le modèle apprenait la différence entre versions.
 
@@ -260,7 +262,7 @@ Ce que le modèle a appris :
 - Le label signifie « l'équipe cartographie l'a-t-elle corrigée par la suite » : le modèle apprend les habitudes de l'équipe, pas ce dont Autoware a besoin. Par exemple, Autoware exige un `turn_direction` sur les lanelets droites en conflit dans le graphe de routage, mais le modèle donne à ces alertes un score plutôt bas.
 - Seuls 3 dépôts permettent d'évaluer right_of_way, les résultats sont instables.
 - Dans une carte en cours de modification (comme Noisy-le-Roi), une alerte « jamais corrigée » peut simplement ne pas encore l'avoir été, et le label 0 n'est pas fiable ; l'AUC turn_direction de ce dépôt n'est que de 0.56. C'est aussi le dépôt qui a le plus d'échantillons (278), ce qui dégrade les performances sur les autres cartes.
-- Quand une régularité découverte est assez nette, mieux vaut la transformer en règle ou en seuil que dépendre indéfiniment du modèle. Par exemple, la vérification géométrique elle-même considère encore les contacts de bord comme des croisements : la vérification 1 signale ces virages, la vérification 2 signale des « crossing overlap without right_of_way » (dans le_plessis, 21 sur 37 sont des contacts de bord) ; pour l'instant, leur p est seulement abaissé par la notation.
+- Quand une régularité découverte est assez nette, mieux vaut la transformer en règle ou en seuil que dépendre indéfiniment du modèle. Par exemple les contacts de bord : le modèle right_of_way n'a aucune caractéristique qui les décrit, et ces chevauchements longs et étroits, de grande surface, obtenaient au contraire un p élevé ; ils sont désormais exclus directement par le seuil `min_overlap_width`.
 
 ## Extensions (`ext/`)
 

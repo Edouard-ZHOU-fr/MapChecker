@@ -39,7 +39,7 @@
 |---|---|
 | 弯道 | 中心线（左右边界的平均）在任意一段长度不超过 `turn_window`（当前 30 m）的区间内，航向变化 ≥ `turn_angle`（当前 30°）。航向先做约 2 m 的滑动平均，去掉节点处的折角噪声；比 `turn_window` 短的 lanelet 就是整条的转角。正值为左转，负值为右转 |
 | 直行 | 不是弯道 |
-| 重叠 | 两条车辆 lanelet 的重叠面积 ≥ `min_overlap_area`（当前 1.0 m²，按 0.5 m 网格采样估算）。前后相接（一条是另一条的前继 / 后继）和左右相邻（共用边界 way）的不算重叠 |
+| 重叠 | 两条车辆 lanelet 的重叠面积 ≥ `min_overlap_area`（当前 1.0 m²，按 0.5 m 网格采样估算），且重叠的平均宽度（面积 / 重叠区沿主方向的长度）≥ `min_overlap_width`（当前 1.0 m，排除狭窄道路上平行车道沿路重叠等边缘相碰）。前后相接（一条是另一条的前继 / 后继）和左右相邻（共用边界 way）的不算重叠 |
 | 分叉 diverge | 重叠的两条 lanelet 有共同的前继，或起点相同 |
 | 汇入 merge | 重叠的两条 lanelet 有共同的后继，或终点相同 |
 | 交叉 crossing | 重叠，但既不是分叉也不是汇入 |
@@ -56,7 +56,7 @@
 | 值不合法 | 有 `turn_direction`，但值不是 `left` / `right` / `straight`。这条 lanelet 不再做下面的检查 | `turn_direction="..." is not a valid value (left/right/straight)` |
 | 弯道没有转向灯 | 弯道，且没有 `turn_direction` | `curve without turn_direction (geometry turns right, suggest turn_direction=right)` |
 | 相交的直行 lanelet 没有 `turn_direction` | 直行、相交，且没有 `turn_direction` | `intersects other lanes without turn_direction (geometry straight, suggest turn_direction=straight)` |
-| 只由 Autoware 检出 | 启用检查 3；在 Autoware 路由图中与其他 lanelet / area 冲突、没有 `turn_direction`，而上面的几何检查没有报告它（例如分叉、重叠面积小于 `min_overlap_area`、被 `ignore_isolated_turns` 跳过的弯道） | `conflicts with <id> in Autoware routing graph without turn_direction` |
+| 只由 Autoware 检出 | 启用检查 3；在 Autoware 路由图中与其他 lanelet / area 冲突、没有 `turn_direction`，而上面的几何检查没有报告它（例如分叉、重叠面积小于 `min_overlap_area` 或平均宽度小于 `min_overlap_width`、被 `ignore_isolated_turns` 跳过的弯道） | `conflicts with <id> in Autoware routing graph without turn_direction` |
 
 当前配置下**不报告**：
 
@@ -98,7 +98,7 @@
 
 - 两条 lanelet 都引用了红绿灯时仍然报告，只在末尾加上 `[both controlled by traffic lights]`。
 - 告警按区域（`-- Area k`）分组：重叠关系连在一起的 lanelet 为一个区域，通常就是一个路口。
-- **不报告**：分叉的 lanelet 对、前后相接或左右相邻的 lanelet、重叠面积小于 `min_overlap_area` 的。
+- **不报告**：分叉的 lanelet 对、前后相接或左右相邻的 lanelet、重叠面积小于 `min_overlap_area` 或平均宽度小于 `min_overlap_width` 的。
 
 ## 检查 3：`autoware`（`autoware_checking: true` 时）
 

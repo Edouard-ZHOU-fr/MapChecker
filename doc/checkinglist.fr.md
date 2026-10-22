@@ -39,7 +39,7 @@ Ce document liste tout ce que `check_lanelet_map.py` vérifie actuellement, et l
 |---|---|
 | Virage | Sur un tronçon quelconque de longueur au plus `turn_window` (actuellement 30 m), la variation de cap de la ligne centrale (moyenne des bordures gauche et droite) est ≥ `turn_angle` (actuellement 30°). Le cap est d'abord lissé par une moyenne glissante d'environ 2 m, pour éliminer le bruit des angles aux nœuds ; pour une lanelet plus courte que `turn_window`, c'est l'angle sur toute sa longueur. Positif à gauche, négatif à droite |
 | Ligne droite | Tout ce qui n'est pas un virage |
-| Chevauchement | La surface de chevauchement de deux lanelets véhicule est ≥ `min_overlap_area` (actuellement 1.0 m², estimée par échantillonnage sur une grille de 0.5 m). Deux lanelets qui se suivent (l'une est le prédécesseur / successeur de l'autre) ou qui sont adjacentes (way de bordure partagé) ne comptent pas comme chevauchement |
+| Chevauchement | La surface de chevauchement de deux lanelets véhicule est ≥ `min_overlap_area` (actuellement 1.0 m², estimée par échantillonnage sur une grille de 0.5 m), et la largeur moyenne du chevauchement (surface / longueur de la zone de chevauchement dans sa direction principale) est ≥ `min_overlap_width` (actuellement 1.0 m, exclut les contacts de bord comme les voies parallèles d'une route étroite qui se chevauchent le long de la route). Deux lanelets qui se suivent (l'une est le prédécesseur / successeur de l'autre) ou qui sont adjacentes (way de bordure partagé) ne comptent pas comme chevauchement |
 | Divergence (diverge) | Les deux lanelets qui se chevauchent ont un prédécesseur commun, ou le même point de départ |
 | Convergence (merge) | Les deux lanelets qui se chevauchent ont un successeur commun, ou le même point d'arrivée |
 | Croisement (crossing) | Chevauchement qui n'est ni une divergence ni une convergence |
@@ -56,7 +56,7 @@ La configuration actuelle est `straight_as_turn_light: true`, `ignore_isolated_t
 | Valeur invalide | `turn_direction` présent, mais sa valeur n'est pas `left` / `right` / `straight`. Cette lanelet ne passe pas les vérifications suivantes | `turn_direction="..." is not a valid value (left/right/straight)` |
 | Virage sans clignotant | Virage sans `turn_direction` | `curve without turn_direction (geometry turns right, suggest turn_direction=right)` |
 | Lanelet droite qui intersecte sans `turn_direction` | Ligne droite, intersecte, sans `turn_direction` | `intersects other lanes without turn_direction (geometry straight, suggest turn_direction=straight)` |
-| Détecté uniquement par Autoware | Vérification 3 activée ; en conflit avec d'autres lanelets / areas dans le graphe de routage Autoware, sans `turn_direction`, et non signalée par les vérifications géométriques ci-dessus (par exemple divergence, chevauchement inférieur à `min_overlap_area`, virage ignoré à cause de `ignore_isolated_turns`) | `conflicts with <id> in Autoware routing graph without turn_direction` |
+| Détecté uniquement par Autoware | Vérification 3 activée ; en conflit avec d'autres lanelets / areas dans le graphe de routage Autoware, sans `turn_direction`, et non signalée par les vérifications géométriques ci-dessus (par exemple divergence, chevauchement inférieur à `min_overlap_area` ou de largeur moyenne inférieure à `min_overlap_width`, virage ignoré à cause de `ignore_isolated_turns`) | `conflicts with <id> in Autoware routing graph without turn_direction` |
 
 Avec la configuration actuelle, **ne sont pas signalés** :
 
@@ -98,7 +98,7 @@ Pour chaque élément de régulation `subtype=right_of_way` de la carte :
 
 - Si les deux lanelets référencent un feu de circulation, le problème est quand même signalé, avec seulement `[both controlled by traffic lights]` ajouté à la fin.
 - Les alertes sont groupées par zone (`-- Area k`) : les lanelets reliées par des chevauchements forment une zone, en général une intersection.
-- **Ne sont pas signalés** : les paires de lanelets qui divergent, les lanelets qui se suivent ou qui sont adjacentes, et les chevauchements inférieurs à `min_overlap_area`.
+- **Ne sont pas signalés** : les paires de lanelets qui divergent, les lanelets qui se suivent ou qui sont adjacentes, et les chevauchements inférieurs à `min_overlap_area` ou de largeur moyenne inférieure à `min_overlap_width`.
 
 ## Vérification 3 : `autoware` (avec `autoware_checking: true`)
 

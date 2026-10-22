@@ -15,6 +15,7 @@
 
 ### 变更
 
+- **重叠的最小平均宽度 `min_overlap_width`**（默认 1.0 m，命令行 `--min-overlap-width`）：重叠的平均宽度（面积 / 重叠区沿主方向的长度）不到它的不再算重叠。狭窄道路上对向平行车道沿路重叠这类边缘相碰，以前在检查 2 中被报成 "crossing overlap without right_of_way"，而且因为面积大反而 p 较高，在检查 1 中被报成 "intersects other lanes"；现在两项检查都不再报告。打分模型已按新阈值重新训练。
 - 结构不完整的 lanelet（左 / 右边界不正好各一条，或引用了不存在的 way / 节点）以前被悄悄跳过或导致程序崩溃，现在在报告开头列出 `Lanelets not loaded (incomplete, not checked): ...`。
 - **不兼容**：`utils.lanelet_map.load_map()` 返回 `LaneletMap`（原来是 `(lanelets, reg_elems, aois)`），`MapContext(lanelet_map, opts, ...)` 的参数随之改变；`utils.heatmap.show_heatmap()` 改名为 `show_windows()`。只通过 `ctx` 使用地图的检查和扩展不受影响。
 

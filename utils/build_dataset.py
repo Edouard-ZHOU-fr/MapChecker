@@ -37,8 +37,8 @@ from utils.lanelet_map import load_map
 from utils.printer import Printer
 
 DEFAULT_DATASET_CONFIG = os.path.join(BASE_DIR, "config", "dataset.yaml")
-CHECK_OPTS = ("turn_angle", "turn_window", "min_overlap_area", "ignore_isolated_turns", "straight_as_turn_light",
-              "only_check_AOI")
+CHECK_OPTS = ("turn_angle", "turn_window", "min_overlap_area", "min_overlap_width", "ignore_isolated_turns",
+              "straight_as_turn_light", "only_check_AOI")
 
 
 def git(repo, *args):

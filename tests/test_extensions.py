@@ -27,7 +27,7 @@ from utils.context import MapContext  # noqa: E402
 from utils.ignore import load_ignore, parse_items  # noqa: E402
 from utils.printer import Printer  # noqa: E402
 
-OPTS = {"min_overlap_area": 1.0, "only_check_AOI": False}
+OPTS = {"min_overlap_area": 1.0, "min_overlap_width": 1.0, "only_check_AOI": False}
 
 
 def write_map(path):

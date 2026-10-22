@@ -139,7 +139,8 @@ class LaneletMapTest(unittest.TestCase):
         self.assertEqual(m.nodes["1"].tags.get("local_x"), None)
 
     def test_context(self):
-        ctx = MapContext.from_file(self.path, {"min_overlap_area": 1.0, "only_check_AOI": False})
+        ctx = MapContext.from_file(self.path, {"min_overlap_area": 1.0, "min_overlap_width": 1.0,
+                                               "only_check_AOI": False})
         self.assertIs(ctx.map.ways, ctx.ways)
         self.assertIs(ctx.nodes, ctx.map.nodes)
         self.assertIs(ctx.relations, ctx.map.relations)

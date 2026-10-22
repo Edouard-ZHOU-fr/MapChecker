@@ -46,6 +46,7 @@ python3 check_lanelet_map.py --only-ext crosswalk     # 只运行扩展检查 cr
 | `--turn-angle DEG` | `turn_angle` |
 | `--turn-window M` | `turn_window` |
 | `--min-overlap-area M2` | `min_overlap_area` |
+| `--min-overlap-width M` | `min_overlap_width` |
 | `--[no-]ignore-isolated-turns` | `ignore_isolated_turns` |
 | `--[no-]straight-as-turn-light` | `straight_as_turn_light` |
 | `--[no-]only-check-aoi` | `only_check_AOI` |
@@ -78,6 +79,7 @@ python3 check_lanelet_map.py --only-ext crosswalk     # 只运行扩展检查 cr
 | `turn_angle` | `30.0` | 判定为弯道的最小航向变化（度） |
 | `turn_window` | `30.0` | 计算航向变化的最大弧长窗口（米），长 lanelet 上的缓弯不算弯道 |
 | `min_overlap_area` | `1.0` | 判定两条 lanelet 重叠的最小面积（m²） |
+| `min_overlap_width` | `1.0` | 判定两条 lanelet 重叠的最小平均宽度（米，重叠面积 / 重叠区沿主方向的长度），排除边缘相碰；`0` 为不限制 |
 | `ignore_isolated_turns` | `false` | `true`：不与其他 lane 交叉 / 汇入的弯道（分叉不算）不检查 `turn_direction` |
 | `straight_as_turn_light` | `true` | `true`：`straight` 也算设置了转向灯，弯道和相交的直行 lanelet 都必须设置 `turn_direction`，不检查方向<br>`false`：检查方向与几何是否一致，直行 lanelet 不要求 `straight` |
 | `only_check_AOI` | `false` | `true`：只检查完全位于地图 AOI（`subtype=AOI` 的闭合 way）内的 lanelet；地图中没有 AOI 时检查整张地图 |
@@ -211,7 +213,7 @@ Heatmap: .../logs/map_check_20261016_093357.png
 | turn_direction | `abs_angle` 航向变化（度）、`curve` 是否弯道、`log_length` 长度、`n_crossing` / `n_merge` / `n_diverge` 与之真正交叉 / 汇入 / 分叉的 lanelet 数、`log_overlap_length` 与其他 lanelet（分叉除外）的最长重叠长度（重叠区沿主方向的长度）、`traffic_light` 自身或前继 lanelet 引用了红绿灯、`isolated` 不与任何 lane 真正交叉 / 汇入，即没有路口 |
 | right_of_way | `log_area` 重叠面积、`merge` 汇入还是交叉、`heading_diff` 重叠处航向差、`max_abs_angle` 两条 lanelet 中较大的航向变化 |
 
-**真正交叉与边缘相碰**：几何检查把重叠面积 ≥ `min_overlap_area` 的非分叉 lanelet 对都当作交叉。其中一部分只是边缘相碰，例如分叉起点的弯道蹭到对向车道、狭窄道路上的平行车道沿路重叠。特征中只有至少一条 lanelet 的中心线进入另一条 lanelet 的范围（车辆会驶入对方车道）才算真正交叉（`utils/geometry.py` 的 `centerline_enters`）。边缘相碰的重叠很窄：平均宽度的中位数为 0.5~0.9 m，真正交叉为 1.6~2.0 m。
+**真正交叉与边缘相碰**：有些重叠只是边缘相碰，例如分叉起点的弯道蹭到对向车道、狭窄道路上的平行车道沿路重叠（对向两条车道中心线只相距 2~3 m，沿路重叠出一条几十米长、约半米宽的窄带）。边缘相碰的重叠很窄：在 15 张地图中，平均宽度（重叠面积 / 重叠长度）的中位数为 0.74 m，3/4 不超过 1.0 m；真正交叉 / 汇入 / 分叉的 95% 在 1.3 m 以上。因此几何检查要求重叠的平均宽度 ≥ `min_overlap_width`（默认 1.0 m），不到的不算重叠，检查 1、2 都不再把它当作交叉。剩下的少数较宽的边缘相碰仍由特征区分：只有至少一条 lanelet 的中心线进入另一条 lanelet 的范围（车辆会驶入对方车道）才算真正交叉（`utils/geometry.py` 的 `centerline_enters`）。
 
 节点高度差也试过，后来去掉了：它随地图版本的处理方式（如高度平滑）而变，模型学到的是版本的差别。
 
@@ -260,7 +262,7 @@ Heatmap: .../logs/map_check_20261016_093357.png
 - label 表示 "地图团队之后是否修复了它"，学到的是团队的习惯，不等于 Autoware 是否需要。例如 Autoware 要求路由图中有冲突的直行 lanelet 也设置 `turn_direction`，但模型会给这类告警较低的分数。
 - right_of_way 只有 3 个仓库可以评估，结果不稳定。
 - 正在修改中的地图（如 Noisy-le-Roi）里 "一直没修" 的告警可能只是还没修到，label 0 不可靠；该仓库 turn_direction 的 AUC 只有 0.56。它的样本最多（278 条），也拖低了其他地图的效果。
-- 发现的规律如果足够明确，更好的做法是把它变成规则或阈值，而不是一直依赖模型。例如几何检查本身仍把边缘相碰当作交叉：检查 1 会报这类弯道，检查 2 会报 "crossing overlap without right_of_way"（le_plessis 中 37 条里有 21 条是边缘相碰），目前只是在打分中降低了它们的 p。
+- 发现的规律如果足够明确，更好的做法是把它变成规则或阈值，而不是一直依赖模型。例如边缘相碰：right_of_way 模型没有描述它的特征，长条形的窄重叠面积大，反而得到较高的 p，现在已改为 `min_overlap_width` 阈值直接排除。
 
 ## 扩展检查 (`ext/`)
 
