@@ -131,6 +131,28 @@ def centerline_enters(a, b, step=0.5):
                 or points_in_polygon(centerline(a, step), b.polygon).any())
 
 
+def heading_at(center, pos):
+    """Unit direction vector at the point of the centerline closest to pos"""
+    i = min(int(np.argmin(np.linalg.norm(center - pos, axis=1))), len(center) - 2)
+    d = center[i + 1] - center[i]
+    return d / max(np.linalg.norm(d), 1e-12)
+
+
+def centerline_gap(a, b, pts, step=0.5):
+    """
+    Minimum distance between the centerlines of two lanelets alongside their overlap (centerline points within 2 step
+    of an overlap point pts): parallel lanes (e.g. lanes of a narrowing road) stay apart along the whole overlap, while
+    the centerlines of crossing / converging lanes come together
+    """
+    best = math.inf
+    ca, cb = centerline(a, step), centerline(b, step)
+    for c, other in ((ca, cb), (cb, ca)):
+        near = np.min(np.linalg.norm(c[:, None] - pts[None], axis=2), axis=1) <= 2 * step
+        if near.any():
+            best = min(best, float(np.min(np.linalg.norm(c[near][:, None] - other[None], axis=2))))
+    return best
+
+
 def polygon_distance(pa, pb):
     """Minimum distance between the boundaries of two non-intersecting polygons"""
     def vertex_to_edges(p, poly):

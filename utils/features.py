@@ -5,7 +5,7 @@ from collections import defaultdict
 
 import numpy as np
 
-from .geometry import arc_length, centerline, centerline_enters, max_heading_change
+from .geometry import arc_length, centerline, centerline_enters, heading_at, max_heading_change
 from .topology import build_topology
 
 # Feature names and their order in the model; run train_model.py again after changing them
@@ -90,17 +90,10 @@ def turn_direction_features(ll, center, angle, opts, ctx):
 def right_of_way_features(a, b, rel, area, pos, opts, step=0.5):
     """rel / area / pos: relation, overlap area and center of the overlap region given by find_overlaps()"""
     ca, cb = centerline(a, step), centerline(b, step)
-    cos = np.clip(np.dot(_heading_at(ca, pos), _heading_at(cb, pos)), -1.0, 1.0)
+    cos = np.clip(np.dot(heading_at(ca, pos), heading_at(cb, pos)), -1.0, 1.0)
     return {
         "log_area": math.log1p(area),
         "merge": float(rel == "merge"),
         "heading_diff": math.degrees(math.acos(cos)),
         "max_abs_angle": max(abs(max_heading_change(c, step, opts["turn_window"])) for c in (ca, cb)),
     }
-
-
-def _heading_at(center, pos):
-    """Unit direction vector at the point of the centerline closest to pos"""
-    i = min(int(np.argmin(np.linalg.norm(center - pos, axis=1))), len(center) - 2)
-    d = center[i + 1] - center[i]
-    return d / max(np.linalg.norm(d), 1e-12)

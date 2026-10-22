@@ -3,11 +3,12 @@ One map plus the results shared by the checks, passed to check(ctx, cfg, out) of
 Overlaps, topology, etc. are only computed when needed, and cached for reuse by later checks.
 """
 
+import math
 from functools import cached_property
 
 import numpy as np
 
-from .geometry import lanelets_in_aoi
+from .geometry import centerline, centerline_gap, heading_at, lanelets_in_aoi, max_heading_change
 from .lanelet_map import by_id, load_map
 from .topology import build_topology, find_overlaps
 
@@ -39,6 +40,7 @@ class MapContext:
         self.map_path = map_path
         self.output_prefix = output_prefix
         self._in_aoi = {}
+        self._straight = {}
 
     @classmethod
     def from_file(cls, map_path, opts, output_prefix=None):
@@ -70,8 +72,31 @@ class MapContext:
         the whole map: [(a_id, b_id, rel, area m², overlap center [x, y], overlap length along the principal direction m)],
         rel is None (crossing) / "merge" / "diverge"
         """
-        return find_overlaps(self.lanelets, self.opts["min_overlap_area"], self.opts["min_overlap_width"],
-                             topology=self.topology)
+        return find_overlaps(self.lanelets, self.opts["min_overlap_area"], self.is_parallel, topology=self.topology)
+
+    def is_parallel(self, a, b, pts, length):
+        """
+        Two overlapping lanelets are parallel lanes, not a crossing / merge (e.g. the two directions of a narrow or
+        narrowing road overlapping along the road): the overlap (points pts, length m) is at least parallel_min_length
+        long, both lanelets are straight or they go in opposite directions (heading difference > 150° at the overlap),
+        and their centerlines stay at least parallel_min_gap apart alongside the overlap (those of crossing /
+        converging lanes come together)
+        """
+        if length < self.opts["parallel_min_length"]:
+            return False
+        if not (self.is_straight(a) and self.is_straight(b)):
+            pos = pts.mean(axis=0)
+            cos = float(np.dot(heading_at(centerline(a, 0.5), pos), heading_at(centerline(b, 0.5), pos)))
+            if cos > math.cos(math.radians(150.0)):
+                return False
+        return centerline_gap(a, b, pts) >= self.opts["parallel_min_gap"]
+
+    def is_straight(self, ll):
+        """Whether the lanelet is straight: centerline heading change < turn_angle (same criterion as Check 1)"""
+        if ll.id not in self._straight:
+            angle = max_heading_change(centerline(ll, 0.5), 0.5, self.opts["turn_window"])
+            self._straight[ll.id] = abs(angle) < self.opts["turn_angle"]
+        return self._straight[ll.id]
 
     def in_aoi(self, lanelet_id):
         """

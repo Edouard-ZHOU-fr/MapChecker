@@ -15,7 +15,8 @@ def check_right_of_way(lanelets, reg_elems, overlaps, aoi_ids, opts, out):
     aoi_ids:  only report issues whose involved lanelets are all in it; None means check the whole map
     """
     out.header(f"Check 2: right_of_way on overlapping lanelets (min overlap area {opts['min_overlap_area']:.1f} m², "
-               f"min mean width {opts['min_overlap_width']:.1f} m)")
+               f"parallel lanes excluded: straight or opposite, overlap >= {opts['parallel_min_length']:.0f} m, centerlines >= "
+               f"{opts['parallel_min_gap']:.1f} m apart)")
 
     def in_aoi(*ids):
         return aoi_ids is None or all(i in aoi_ids for i in ids)

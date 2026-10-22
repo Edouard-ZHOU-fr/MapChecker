@@ -30,10 +30,13 @@ heatmap:
 turn_angle: 30.0         # minimum heading change to count as a curve (degrees)
 turn_window: 30.0        # maximum arc length window for computing the heading change (m)
 min_overlap_area: 1.0    # minimum area to count as an overlap (m²)
-min_overlap_width: 0.6   # minimum mean width of the overlap (area / length along its principal direction, m) to count as an
-                         #   overlap: excludes edge contact, e.g. parallel lanes on a narrow road that overlap along the
-                         #   road, a curve grazing the opposite lane (mean width mostly 0.5~1.0 m, true crossings /
-                         #   merges mostly > 1.3 m); 0 disables it
+parallel_min_length: 30.0  # parallel lanes are not an overlap: two lanelets that are both straight (heading change
+parallel_min_gap: 1.8      #   < turn_angle) or go in opposite directions (heading difference > 150°), overlapping over at
+                           #   least parallel_min_length (m), whose centerlines stay at least parallel_min_gap (m) apart
+                           #   alongside the overlap, e.g. the two directions of a narrow or narrowing road overlapping
+                           #   along the road, also on a bend (an intersection over such a length is practically
+                           #   impossible); the centerlines of crossing / converging lanes come together (lanes covered by
+                           #   a right_of_way: at most 1.0 m apart); a large parallel_min_gap (e.g. 99) disables it
 ignore_isolated_turns: true   # true: if a curve does not cross / merge with other lanes (diverge does not count),
                               #   turn_direction is not checked
 straight_as_turn_light: true  # true: straight counts as a turn signal, only check that curves and straight lanelets intersecting

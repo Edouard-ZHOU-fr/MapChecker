@@ -147,9 +147,12 @@ def parse_args():
                              "on long lanelets are ignored (overrides config)")
     parser.add_argument("--min-overlap-area", type=float,
                         help="min overlap area (m²) to consider two lanelets as overlapping (overrides config)")
-    parser.add_argument("--min-overlap-width", type=float,
-                        help="min mean overlap width (m, area / length) to consider two lanelets as overlapping, "
-                             "excludes edge contact (overrides config)")
+    parser.add_argument("--parallel-min-length", type=float,
+                        help="two straight lanelets overlapping over at least this length (m) whose centerlines stay "
+                             "--parallel-min-gap apart are parallel lanes, not an overlap (overrides config)")
+    parser.add_argument("--parallel-min-gap", type=float,
+                        help="min distance (m) between the centerlines alongside the overlap for parallel lanes, "
+                             "see --parallel-min-length (overrides config)")
     parser.add_argument("--ignore-isolated-turns", action=argparse.BooleanOptionalAction, default=None,
                         help="ignore curves that do not intersect any other lane (overrides config)")
     parser.add_argument("--straight-as-turn-light", action=argparse.BooleanOptionalAction, default=None,
@@ -226,7 +229,8 @@ def main():
         "turn_angle": args.turn_angle,
         "turn_window": args.turn_window,
         "min_overlap_area": args.min_overlap_area,
-        "min_overlap_width": args.min_overlap_width,
+        "parallel_min_length": args.parallel_min_length,
+        "parallel_min_gap": args.parallel_min_gap,
         "ignore_isolated_turns": args.ignore_isolated_turns,
         "straight_as_turn_light": args.straight_as_turn_light,
         "only_check_AOI": args.only_check_aoi,
