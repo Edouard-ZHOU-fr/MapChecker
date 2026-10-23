@@ -8,6 +8,7 @@ Ce fichier recense les principales évolutions de chaque version de MapChecker, 
 
 ### Ajouté
 
+- **Navigation par la légende dans la fenêtre de la carte de chaleur** : un clic sur une entrée de la légende (une vérification, `ERROR` ou `hotspot`) déplace la vue sur le problème suivant de cette catégorie et affiche ses informations ; chaque clic passe au suivant, en boucle ; le bouton précédent de la barre d'outils revient à la vue précédente.
 - **Extension `stopline`** : vérifie qu'une ligne d'arrêt (way avec `type=stop_line`) n'est formée que de deux points ; au-delà de 2 points (ligne brisée), WARNING avec la distance du point intermédiaire à la droite reliant les deux extrémités ; moins de 2 points ou nœud inexistant : ERROR. Voir [ext/stopline/README.md](../ext/stopline/README.md).
 - **Extension `altitude`** : détecte les points anormaux de l'altitude `ele` sur les bordures de voie (sauts, pics, dévers excessif, absence de `ele`) et génère dans le répertoire des logs un graphique d'évolution de l'altitude `<nom du log>_altitude.png`, voir [ext/altitude/README.md](../ext/altitude/README.md).
 - **Fenêtre interactive d'altitude** : avec `isShow: true` dans la configuration, une fenêtre indépendante montrant l'altitude en vue de dessus s'ouvre à la fin du rapport ; un clic sur un point anormal ou sur une lanelet affiche son profil en long et ses détails dans une seconde petite fenêtre.

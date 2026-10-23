@@ -8,6 +8,7 @@
 
 ### 新增
 
+- **热力图窗口中按图例逐个跳转**：单击图例中的一项（某个检查项、`ERROR` 或 `hotspot`），视角移到该类的下一个问题并显示其信息；再单击跳到下一个，循环；工具栏的后退按钮回到上一个视角。
 - **扩展 `stopline`**：检查停止线（`type=stop_line` 的 way）是否只由两个点组成；多于 2 个点（折线）时报 WARNING，并给出中间节点离两端连线的距离；少于 2 个点或引用了不存在的节点时报 ERROR。见 [ext/stopline/README.md](../ext/stopline/README.md)。
 - **扩展 `altitude`**：检查车道边界上高程 `ele` 的突兀点（跳变、尖峰、横坡过大、没有 `ele`），并在日志目录生成高程趋势图 `<日志名>_altitude.png`，见 [ext/altitude/README.md](../ext/altitude/README.md)。
 - **altitude 的交互窗口**：配置中 `isShow: true` 时，报告结束后弹出独立的高程俯视图窗口；单击突兀点或 lanelet 时，在另一个小窗口中显示其纵断面和细节。

@@ -6,7 +6,8 @@ have weight 1; density and hotspots use the sum of weights (i.e. the expected nu
 all weights are 1, i.e. the number of issues.
 Issues of extension checks (ext/, checks not in MARKERS) are only marked with green dots (one shape per extension),
 and are not used for coloring or hotspots. ERRORs of all checks are marked with red dots.
-In the pop-up window, clicking an issue point or a lanelet shows the lanelet id, see _enable_click()
+In the pop-up window, clicking an issue point or a lanelet shows the lanelet id, clicking a legend entry moves the
+view to its issues (or hotspots) one by one, see _enable_click()
 """
 
 import sys
@@ -186,7 +187,8 @@ def _save_image(path, lanelets, aois, pts, items, weights, core, weighted, spots
         import matplotlib.pyplot as plt
         fig = plt.figure(figsize=figsize, dpi=min(100.0, SHOW_MAX_HEIGHT / figsize[1]), constrained_layout=True)
         fig.canvas.manager.set_window_title(f"MapChecker heatmap: {map_name}")
-        _enable_click(fig, _draw(fig, *args), lanelets, pts, items)
+        ax, groups = _draw(fig, *args)
+        _enable_click(fig, ax, lanelets, pts, items, groups, radius)
 
 
 def _draw(fig, lanelets, aois, pts, items, weights, core, weighted, spots, radius, map_name, extent, dens,
@@ -217,20 +219,31 @@ def _draw(fig, lanelets, aois, pts, items, weights, core, weighted, spots, radiu
                 label="AOI" if k == 0 else None)
     ax.imshow(rgba, origin="lower", extent=img_extent, interpolation="bilinear", zorder=3)
 
+    # legend label -> targets visited one by one when clicking the legend entry in the window, each target being the
+    # indices of its issues: a single issue, in the order of the output (unscored first, then by descending p), or a
+    # hotspot, by rank
+    groups = {}
+
+    def group(label, sel):
+        groups[label] = [[i] for i in sorted(sel, key=lambda i: (items[i][2] is not None, -(items[i][2] or 0.0)))]
+        return label
+
     error = np.array([item[3].startswith("[ERROR]") for item in items], dtype=bool)
     for category, marker in MARKERS.items():
         sel = [i for i, item in enumerate(items) if item[0] == category and not error[i]]
         if sel:
             ax.scatter(pts[sel, 0], pts[sel, 1], s=14, marker=marker, facecolors="white", edgecolors="#222222",
-                       linewidths=0.6, zorder=4, label=f"{category} ({len(sel)})")
+                       linewidths=0.6, zorder=4, label=group(f"{category} ({len(sel)})", sel))
     for k, category in enumerate(dict.fromkeys(item[0] for item, c in zip(items, core) if not c)):
         sel = [i for i, item in enumerate(items) if item[0] == category and not error[i]]
         if sel:
             ax.scatter(pts[sel, 0], pts[sel, 1], s=16, marker=EXT_MARKERS[k % len(EXT_MARKERS)],
-                       facecolors=EXT_COLOR, edgecolors="none", zorder=4, label=f"{category} ({len(sel)}, ext)")
+                       facecolors=EXT_COLOR, edgecolors="none", zorder=4,
+                       label=group(f"{category} ({len(sel)}, ext)", sel))
     if error.any():
+        sel = list(np.nonzero(error)[0])
         ax.scatter(pts[error, 0], pts[error, 1], s=30, marker="o", facecolors=ERROR_COLOR, edgecolors="#1f1f1f",
-                   linewidths=0.7, zorder=4.5, label=f"ERROR ({error.sum()})")
+                   linewidths=0.7, zorder=4.5, label=group(f"ERROR ({len(sel)})", sel))
 
     for k, members in enumerate(spots, 1):
         c = pts[members].mean(axis=0)
@@ -241,6 +254,7 @@ def _draw(fig, lanelets, aois, pts, items, weights, core, weighted, spots, radiu
                     zorder=6, bbox=dict(boxstyle="round,pad=0.2", facecolor="white", edgecolor="none", alpha=0.85))
     if spots:
         ax.add_line(Line2D([], [], color="#1f1f1f", linewidth=1.2, label=f"hotspot (#rank  {unit})"))
+        groups[f"hotspot (#rank  {unit})"] = [list(members) for members in spots]
 
     ax.set_xlim(extent[0], extent[2])
     ax.set_ylim(extent[1], extent[3])
@@ -260,14 +274,16 @@ def _draw(fig, lanelets, aois, pts, items, weights, core, weighted, spots, radiu
     bar = fig.colorbar(ScalarMappable(norm, cmap), ax=ax, shrink=0.6, pad=0.01)
     bar.set_label(f"{unit} nearby (Gaussian weighted, sigma = {radius / 2:.0f} m)", color="#6b6b66")
     bar.ax.tick_params(colors="#6b6b66", labelsize=8)
-    return ax
+    return ax, groups
 
 
-def _enable_click(fig, ax, lanelets, pts, items):
+def _enable_click(fig, ax, lanelets, pts, items, groups, radius):
     """
     Clicking in the pop-up window (also in zoom / pan mode, dragging doesn't count) shows lanelet ids, and outlines the
     related lanelets in orange:
       - hit an issue point: show the lanelets, check and p of all issues there, and print their log lines in the terminal
+      - a legend entry (groups from _draw()): move the view to its next issue (or hotspot), shown the same way; each
+        click goes to the next one, cycling; the toolbar's back button returns to the previous view
       - otherwise: show the lanelet(s) at the clicked location (possibly several where they overlap)
       - click on empty space: hide
     """
@@ -279,9 +295,63 @@ def _enable_click(fig, ax, lanelets, pts, items):
                         bbox=dict(boxstyle="round,pad=0.3", facecolor="white", edgecolor="#1f1f1f", alpha=0.95))
     highlight = PolyCollection([], facecolors="none", edgecolors=HIGHLIGHT_COLOR, linewidths=2.0, zorder=7)
     ax.add_collection(highlight)
-    fig.text(0.005, 0.005, "click an issue or a lanelet to show its id", fontsize=8, color="#6b6b66")
+    fig.text(0.005, 0.005, "click an issue or a lanelet to show its id; click a legend entry to go to its issues one by "
+                           "one", fontsize=8, color="#6b6b66")
     paths = {lid: Path(ll.polygon) for lid, ll in lanelets.items()}
-    pressed = {}
+    pressed, cursor = {}, {}  # cursor: legend label -> index of the next target
+
+    def issue_lines(hits):
+        lines = [f"lanelet {' / '.join(items[h][1]) or '-'}  {items[h][0]}"
+                 + ("" if items[h][2] is None else f"  p={items[h][2]:.2f}") for h in hits[:MAX_CLICK_LINES]]
+        if len(hits) > MAX_CLICK_LINES:
+            lines.append(f"... (+{len(hits) - MAX_CLICK_LINES})")
+        return lines
+
+    def show(xy, ids, lines, pixel):
+        highlight.set_verts([lanelets[i].polygon for i in ids if i in lanelets])
+        label.set_visible(bool(lines))
+        if lines:
+            # place the text on the side of the point facing the figure center, so it doesn't go beyond the figure
+            box = ax.bbox
+            right, top = pixel[0] > (box.x0 + box.x1) / 2, pixel[1] > (box.y0 + box.y1) / 2
+            label.xy = xy
+            label.xyann = (-12 if right else 12, -12 if top else 12)
+            label.set_horizontalalignment("right" if right else "left")
+            label.set_verticalalignment("top" if top else "bottom")
+            label.set_text("\n".join(lines))
+        fig.canvas.draw_idle()
+
+    def jump(name):
+        """Move the view to the next target of the legend entry name, keeping the shape of the current view"""
+        targets = groups[name]
+        k = cursor.get(name, 0) % len(targets)
+        cursor[name] = k + 1
+        members = targets[k]
+        center = pts[members].mean(axis=0)
+        half = max(1.5 * radius, np.abs(pts[members] - center).max() + radius)
+        toolbar = fig.canvas.toolbar
+        if toolbar is not None and toolbar._nav_stack() is None:
+            toolbar.push_current()  # the full map becomes the home view
+        (x0, x1), (y0, y1) = ax.get_xlim(), ax.get_ylim()
+        aspect = (x1 - x0) / (y1 - y0)
+        hw, hh = (half * aspect, half) if aspect >= 1 else (half, half / aspect)
+        ax.set_xlim(center[0] - hw, center[0] + hw)
+        ax.set_ylim(center[1] - hh, center[1] + hh)
+        if toolbar is not None:
+            toolbar.push_current()  # the back button returns to the previous view
+        title = f"{name.split(' (')[0]} {k + 1}/{len(targets)}"
+        print(f"--- {title}\n" + "\n".join(items[h][3] for h in members))
+        show(center, sorted({i for h in members for i in items[h][1]}, key=int), [title] + issue_lines(members),
+             ax.transData.transform(center))
+
+    def legend_entry(event):
+        """Text of the legend entry under the click, None if the click is not on the legend"""
+        legend = ax.get_legend()
+        if legend is None or not legend.get_window_extent().contains(event.x, event.y):
+            return None
+        texts = legend.get_texts()
+        nearest = min(texts, key=lambda t: abs(t.get_window_extent().y0 + t.get_window_extent().y1 - 2 * event.y))
+        return nearest.get_text()
 
     def on_press(event):
         pressed["xy"] = (event.x, event.y)
@@ -291,15 +361,17 @@ def _enable_click(fig, ax, lanelets, pts, items):
         if (event.inaxes is not ax or event.button != 1 or start is None
                 or np.hypot(event.x - start[0], event.y - start[1]) > CLICK_PIXELS):
             return
+        entry = legend_entry(event)
+        if entry is not None:
+            if entry in groups:
+                jump(entry)
+            return
         dist = np.linalg.norm(ax.transData.transform(pts) - (event.x, event.y), axis=1)
         hits = [i for i in np.argsort(dist) if dist[i] <= CLICK_PIXELS]
         if hits:
             xy = pts[hits[0]]
             ids = sorted({i for h in hits for i in items[h][1]}, key=int)
-            lines = [f"lanelet {' / '.join(items[h][1]) or '-'}  {items[h][0]}"
-                     + ("" if items[h][2] is None else f"  p={items[h][2]:.2f}") for h in hits[:MAX_CLICK_LINES]]
-            if len(hits) > MAX_CLICK_LINES:
-                lines.append(f"... (+{len(hits) - MAX_CLICK_LINES})")
+            lines = issue_lines(hits)
             print("\n".join(items[h][3] for h in hits))
         else:
             xy = (event.xdata, event.ydata)
@@ -307,18 +379,7 @@ def _enable_click(fig, ax, lanelets, pts, items):
             lines = [f"lanelet {', '.join(ids)}"] if ids else []
             if ids:
                 print(lines[0])
-        highlight.set_verts([lanelets[i].polygon for i in ids if i in lanelets])
-        label.set_visible(bool(lines))
-        if lines:
-            # place the text on the side of the click facing the figure center, so it doesn't go beyond the figure
-            box = ax.bbox
-            right, top = event.x > (box.x0 + box.x1) / 2, event.y > (box.y0 + box.y1) / 2
-            label.xy = xy
-            label.xyann = (-12 if right else 12, -12 if top else 12)
-            label.set_horizontalalignment("right" if right else "left")
-            label.set_verticalalignment("top" if top else "bottom")
-            label.set_text("\n".join(lines))
-        fig.canvas.draw_idle()
+        show(xy, ids, lines, (event.x, event.y))
 
     fig.canvas.mpl_connect("button_press_event", on_press)
     fig.canvas.mpl_connect("button_release_event", on_release)
