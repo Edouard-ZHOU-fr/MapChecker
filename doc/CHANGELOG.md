@@ -8,6 +8,7 @@
 
 ### 新增
 
+- **扩展 `stopline`**：检查停止线（`type=stop_line` 的 way）是否只由两个点组成；多于 2 个点（折线）时报 WARNING，并给出中间节点离两端连线的距离；少于 2 个点或引用了不存在的节点时报 ERROR。见 [ext/stopline/README.md](../ext/stopline/README.md)。
 - **扩展 `altitude`**：检查车道边界上高程 `ele` 的突兀点（跳变、尖峰、横坡过大、没有 `ele`），并在日志目录生成高程趋势图 `<日志名>_altitude.png`，见 [ext/altitude/README.md](../ext/altitude/README.md)。
 - **altitude 的交互窗口**：配置中 `isShow: true` 时，报告结束后弹出独立的高程俯视图窗口；单击突兀点或 lanelet 时，在另一个小窗口中显示其纵断面和细节。
 - **地图的全部信息**：`ctx.nodes` / `ctx.ways` / `ctx.relations` / `ctx.map` 提供地图文件中的所有节点、way、relation（全部标签、XML 属性和成员）以及 `MetaInfo`，新扩展不需要修改地图读取代码，见 [ext/README.md](../ext/README.md)。
@@ -15,6 +16,7 @@
 
 ### 变更
 
+- 热力图：所有检查（包括扩展检查）的 ERROR 用红色的点标出，画在 WARNING 点之上，图例中单独列出条数。
 - README 默认改为法语（`README.md`），中文版移到 [doc/README.zh.md](README.zh.md)。
 - **平行车道不算重叠**（`parallel_min_length` 默认 10 m、`parallel_min_gap` 默认 1.5 m，命令行 `--parallel-min-length` / `--parallel-min-gap`）：两条都是直行、或方向相反（如弯道上的双向车道）的 lanelet，重叠长度 ≥ `parallel_min_length`、且沿重叠段两条中心线始终相距 ≥ `parallel_min_gap` 的，不再算重叠。狭窄或变窄的道路上沿路重叠的车道（如对向车道画得过宽），以前在检查 2 中被报成 "crossing overlap without right_of_way"，而且因为面积大反而 p 较高，在检查 1 中被报成 "intersects other lanes"；现在两项检查都不再报告。中心线会合的汇入 / 交叉，以及同向的弯道并排，不受影响。打分模型已按新规则重新训练。
 - 结构不完整的 lanelet（左 / 右边界不正好各一条，或引用了不存在的 way / 节点）以前被悄悄跳过或导致程序崩溃，现在在报告开头列出 `Lanelets not loaded (incomplete, not checked): ...`。
@@ -22,6 +24,7 @@
 
 ### 修复
 
+- 末尾的忽略列表报告中，被忽略的 id 不是 lanelet、但确实屏蔽了问题时（如 stopline 的停止线 way id），显示为 `way <id> ... N issue(s) suppressed`，不再误报为 `not found in map`。
 - 热力图：没有给出坐标的问题取相关 lanelet 中点的平均位置，相关 lanelet 相距很远时会落在无关的地方，例如 right_of_way 引用了另一个路口的 lanelet 时被画在地图正中。现在相距超过 `heatmap.radius` 时改用第一条 lanelet 的位置；检查 2 的 "do not overlap at all" 画在引用该规则元素的 lanelet 上。
 
 ## [3.0.0] - 2026-10-21

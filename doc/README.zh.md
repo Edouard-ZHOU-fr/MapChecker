@@ -143,7 +143,7 @@ Heatmap: .../logs/map_check_20261016_093357.png
   - 单击问题点：显示该处问题的 lanelet 编号、检查项和 p（同一位置有多条时都列出），相关 lanelet 用橙色描边，终端同时输出这些问题在日志中的那一行（方便复制）。
   - 单击其他位置：显示点击处的 lanelet 编号（重叠处可能有多条）；单击空白处隐藏。
   - 缩放 / 平移模式下也可以直接单击，拖动不算单击。
-- **范围**：`only_check_AOI: true` 时只画 AOI 的范围（虚线为 AOI 边界），否则画整张地图。问题点按检查项用不同形状标出：圆形 turn_direction、方形 right_of_way、三角形 autoware。扩展检查（`ext/`）的问题用绿色的点标出（每项扩展一种形状），不参与着色和区域的判定，Hotspots 中单独列出其条数。
+- **范围**：`only_check_AOI: true` 时只画 AOI 的范围（虚线为 AOI 边界），否则画整张地图。问题点按检查项用不同形状标出：圆形 turn_direction、方形 right_of_way、三角形 autoware。扩展检查（`ext/`）的问题用绿色的点标出（每项扩展一种形状），不参与着色和区域的判定，Hotspots 中单独列出其条数。所有检查（包括扩展检查）的 ERROR 都用红色的点标出，画在其他点之上。
 
 ## 告警打分 (`Using_LR`)
 
@@ -274,6 +274,7 @@ Heatmap: .../logs/map_check_20261016_093357.png
 |---|---|
 | [altitude](../ext/altitude/README.md) | 车道边界上高程 `ele` 的突兀点（跳变、尖峰、横坡过大、没有 `ele`），另外在日志目录生成高程趋势图 `<日志名>_altitude.png` |
 | [crosswalk](../ext/crosswalk/README.md) | crosswalk 在横向上最多超出道路多少，超出 `max_extension` 时报 WARNING |
+| [stopline](../ext/stopline/README.md) | 停止线是否只由两个点组成（一条直线而不是折线），多于 2 个点时报 WARNING |
 
 **新增扩展检查**：复制模板 `cp -r ext/_template ext/<名称>`，只需写一个 `check(ctx, cfg, out)` 函数；地图读取、配置、忽略列表、日志和热力图都由框架处理。`ctx` 中有地图文件的全部信息（所有节点、way、relation 的标签和几何）和共享的计算结果（如 lanelet 重叠、前后继关系），不用改地图读取代码，也不用重复计算。步骤和接口见 [ext/README.md](../ext/README.md)。`python3 -m unittest discover -s tests` 会自动加载 `ext/` 下的每个扩展，在一张合成地图上运行一次。
 
@@ -294,6 +295,7 @@ MapChecker/
     _template/                新扩展的模板 (不会自动运行)
     altitude/                 车道高程的突兀点，并生成高程趋势图
     crosswalk/                crosswalk 在横向上最多超出道路多少
+    stopline/                 停止线是否为两点直线
   tests/                      测试 (python3 -m unittest discover -s tests)
   config/
     config.yaml               检查配置

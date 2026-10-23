@@ -5,7 +5,7 @@ With Using_LR, weighted by p: a scored WARNING has weight p (probability of a tr
 have weight 1; density and hotspots use the sum of weights (i.e. the expected number of true issues); without a model,
 all weights are 1, i.e. the number of issues.
 Issues of extension checks (ext/, checks not in MARKERS) are only marked with green dots (one shape per extension),
-and are not used for coloring or hotspots.
+and are not used for coloring or hotspots. ERRORs of all checks are marked with red dots.
 In the pop-up window, clicking an issue point or a lanelet shows the lanelet id, see _enable_click()
 """
 
@@ -24,6 +24,7 @@ MAX_LISTED_LANELETS = 12
 MARKERS = {"turn_direction": "o", "right_of_way": "s", "autoware": "^"}
 EXT_COLOR = "#2f9e44"    # extension check (ext/) issue points: green, each extension uses the next shape in EXT_MARKERS
 EXT_MARKERS = ("o", "D", "v", "P", "X", "*")
+ERROR_COLOR = "#e03131"  # ERROR points (all checks): red dots, drawn above the WARNING points
 SAVE_DPI = 150
 SHOW_MAX_HEIGHT = 900    # maximum height of the pop-up window (pixels)
 CLICK_PIXELS = 8         # in the pop-up window: within this many pixels of an issue point counts as a hit; press and
@@ -216,15 +217,20 @@ def _draw(fig, lanelets, aois, pts, items, weights, core, weighted, spots, radiu
                 label="AOI" if k == 0 else None)
     ax.imshow(rgba, origin="lower", extent=img_extent, interpolation="bilinear", zorder=3)
 
+    error = np.array([item[3].startswith("[ERROR]") for item in items], dtype=bool)
     for category, marker in MARKERS.items():
-        sel = [i for i, item in enumerate(items) if item[0] == category]
+        sel = [i for i, item in enumerate(items) if item[0] == category and not error[i]]
         if sel:
             ax.scatter(pts[sel, 0], pts[sel, 1], s=14, marker=marker, facecolors="white", edgecolors="#222222",
                        linewidths=0.6, zorder=4, label=f"{category} ({len(sel)})")
     for k, category in enumerate(dict.fromkeys(item[0] for item, c in zip(items, core) if not c)):
-        sel = [i for i, item in enumerate(items) if item[0] == category]
-        ax.scatter(pts[sel, 0], pts[sel, 1], s=16, marker=EXT_MARKERS[k % len(EXT_MARKERS)], facecolors=EXT_COLOR,
-                   edgecolors="none", zorder=4, label=f"{category} ({len(sel)}, ext)")
+        sel = [i for i, item in enumerate(items) if item[0] == category and not error[i]]
+        if sel:
+            ax.scatter(pts[sel, 0], pts[sel, 1], s=16, marker=EXT_MARKERS[k % len(EXT_MARKERS)],
+                       facecolors=EXT_COLOR, edgecolors="none", zorder=4, label=f"{category} ({len(sel)}, ext)")
+    if error.any():
+        ax.scatter(pts[error, 0], pts[error, 1], s=30, marker="o", facecolors=ERROR_COLOR, edgecolors="#1f1f1f",
+                   linewidths=0.7, zorder=4.5, label=f"ERROR ({error.sum()})")
 
     for k, members in enumerate(spots, 1):
         c = pts[members].mean(axis=0)

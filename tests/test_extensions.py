@@ -43,11 +43,13 @@ def write_map(path):
     write_osm(path, points, ways, lanelets)
 
 
-def write_osm(path, points, ways, lanelets):
+def write_osm(path, points, ways, lanelets, extra=()):
     """
     points:   {node id: (x, y) or (x, y, ele)}, ele defaults to 0, if None the node has no ele tag
     ways:     {way id: (node id, ...)}
-    lanelets: {lanelet id: (left boundary way id, right boundary way id, subtype, other tags)}
+    lanelets: {lanelet id: (left boundary way id, right boundary way id, subtype, other tags
+                            [, ids of the referenced regulatory elements])}
+    extra:    other XML elements written as is (e.g. stop lines with their tags, regulatory elements)
     """
     lines = ['<?xml version="1.0"?>', '<osm version="0.6">']
     for nid, (x, y, *z) in points.items():
@@ -56,11 +58,13 @@ def write_osm(path, points, ways, lanelets):
                      f'<tag k="local_x" v="{x}"/><tag k="local_y" v="{y}"/>{ele}</node>')
     for wid, refs in ways.items():
         lines.append(f'<way id="{wid}">' + "".join(f'<nd ref="{r}"/>' for r in refs) + "</way>")
-    for rid, (left, right, subtype, tags) in lanelets.items():
+    for rid, (left, right, subtype, tags, *regs) in lanelets.items():
         lines.append(f'<relation id="{rid}"><member type="way" role="left" ref="{left}"/>'
-                     f'<member type="way" role="right" ref="{right}"/><tag k="type" v="lanelet"/>'
-                     f'<tag k="subtype" v="{subtype}"/>' + "".join(f'<tag k="{k}" v="{v}"/>' for k, v in tags.items())
-                     + "</relation>")
+                     f'<member type="way" role="right" ref="{right}"/>'
+                     + "".join(f'<member type="relation" role="regulatory_element" ref="{r}"/>' for r in (regs or [()])[0])
+                     + f'<tag k="type" v="lanelet"/><tag k="subtype" v="{subtype}"/>'
+                     + "".join(f'<tag k="{k}" v="{v}"/>' for k, v in tags.items()) + "</relation>")
+    lines.extend(extra)
     lines.append("</osm>")
     with open(path, "w", encoding="utf-8") as f:
         f.write("\n".join(lines))
@@ -116,6 +120,38 @@ class ExtensionTest(unittest.TestCase):
         ext = extmod.load(extmod.discover()["crosswalk"], {"max_extension": 3.0})
         out, _ = run_extensions([ext], self.map_path)
         self.assertEqual(out.count["crosswalk"], 0)
+
+    def test_stopline(self):
+        """stopline: 2 points pass; more points WARNING with the distance of the middle point to the line between the
+        ends (also when the points are on the line); 1 point ERROR; ignored by the stop line id or a lanelet using it"""
+        path = os.path.join(self.tmp, "stopline.osm")
+        points = {1: (0, 3.5), 2: (50, 3.5), 3: (0, 0), 4: (50, 0),
+                  31: (10, 0), 32: (10, 3.5),                    # straight line of 2 points
+                  33: (30, 0), 34: (30.5, 1.75), 35: (30, 3.5),  # polyline, middle point 0.5 m off the line
+                  36: (40, 0), 37: (40, 1.75), 38: (40, 3.5),    # 3 points on a straight line
+                  39: (45, 0)}                                   # a single point
+        stop_lines = {51: (31, 32), 52: (33, 34, 35), 53: (36, 37, 38), 54: (39,)}
+        extra = [f'<way id="{wid}">' + "".join(f'<nd ref="{r}"/>' for r in refs) + '<tag k="type" v="stop_line"/></way>'
+                 for wid, refs in stop_lines.items()]
+        extra.append('<relation id="61"><member type="way" role="ref_line" ref="52"/>'
+                     '<tag k="type" v="regulatory_element"/><tag k="subtype" v="traffic_sign"/></relation>')
+        write_osm(path, points, {11: (1, 2), 12: (3, 4)}, {21: (11, 12, "road", {}, [61])}, extra)
+
+        ext = extmod.load(extmod.discover()["stopline"])
+        out, text = run_extensions([ext], path)
+        self.assertEqual((out.count["stopline"], out.errors["stopline"]), (2, 1), text)
+        self.assertIn("stop_line 52: 3 points (polyline), should be a straight line of 2 points; node 34 is 0.50 m "
+                      "off the line between its ends (length 3.6 m) | lanelet 21", text)
+        self.assertIn("stop_line 53: 3 points (polyline), should be a straight line of 2 points; node 36 is 0.00 m", text)
+        self.assertIn("stop_line 54: only 1 point(s), a stop line needs 2", text)
+        self.assertNotIn("stop_line 51", text)
+        self.assertIn("stop lines not referenced by any regulatory element: 51 53 54", text)
+
+        for ignored in ("52", "21"):  # the stop line itself, or the lanelet referencing it
+            with self.subTest(ignored=ignored):
+                out, text = run_extensions([ext], path, ignore={"stopline": {ignored: ""}})
+                self.assertEqual(out.count["stopline"], 1, text)
+                self.assertEqual(out.suppressed[("stopline", ignored)], 1)
 
     def test_altitude(self):
         """altitude: detection of step / spike / cross slope, nodes without ele, ignore list and trend chart"""

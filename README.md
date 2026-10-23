@@ -143,7 +143,7 @@ Heatmap: .../logs/map_check_20261016_093357.png
   - Clic sur un point de problème : affiche le numéro de lanelet, la vérification et le p du problème à cet endroit (tous, s'il y en a plusieurs au même endroit), entoure en orange les lanelets concernées, et affiche dans le terminal les lignes correspondantes du log (pratique pour les copier).
   - Clic ailleurs : affiche le numéro de la lanelet à l'endroit cliqué (plusieurs possibles en cas de chevauchement) ; un clic dans le vide masque l'info.
   - Le clic fonctionne aussi en mode zoom / déplacement ; un glisser ne compte pas comme un clic.
-- **Étendue** : avec `only_check_AOI: true`, seule l'étendue des AOI est dessinée (bordure des AOI en pointillés), sinon toute la carte. Les points de problème ont une forme selon la vérification : cercle turn_direction, carré right_of_way, triangle autoware. Les problèmes des extensions (`ext/`) sont marqués par des points verts (une forme par extension) ; ils n'interviennent ni dans la coloration ni dans la détermination des zones, et leur nombre est indiqué à part dans les Hotspots.
+- **Étendue** : avec `only_check_AOI: true`, seule l'étendue des AOI est dessinée (bordure des AOI en pointillés), sinon toute la carte. Les points de problème ont une forme selon la vérification : cercle turn_direction, carré right_of_way, triangle autoware. Les problèmes des extensions (`ext/`) sont marqués par des points verts (une forme par extension) ; ils n'interviennent ni dans la coloration ni dans la détermination des zones, et leur nombre est indiqué à part dans les Hotspots. Les ERROR de toutes les vérifications (extensions comprises) sont marquées par des points rouges, dessinés au-dessus des autres points.
 
 ## Notation des alertes (`Using_LR`)
 
@@ -274,6 +274,7 @@ Chaque sous-répertoire de `ext/` est une extension indépendante, avec son prop
 |---|---|
 | [altitude](ext/altitude/README.md) | Points anormaux de l'altitude `ele` sur les bordures de voie (sauts, pics, dévers excessif, absence de `ele`) ; génère aussi dans le répertoire des logs un graphique d'évolution de l'altitude `<nom du log>_altitude.png` |
 | [crosswalk](ext/crosswalk/README.md) | De combien un passage piéton dépasse au plus latéralement de la route ; WARNING au-delà de `max_extension` |
+| [stopline](ext/stopline/README.md) | Une ligne d'arrêt est-elle formée de deux points seulement (une droite et non une ligne brisée) ; WARNING au-delà de 2 points |
 
 **Ajouter une extension** : copier le modèle `cp -r ext/_template ext/<nom>` et écrire une seule fonction `check(ctx, cfg, out)` ; la lecture de la carte, la configuration, la liste d'ignorés, le log et la carte de chaleur sont gérés par le framework. `ctx` contient toutes les informations du fichier de carte (tags et géométrie de tous les nœuds, ways et relations) et les résultats de calcul partagés (chevauchements de lanelets, relations prédécesseur / successeur, etc.) : pas besoin de modifier le code de lecture de la carte ni de refaire les calculs. Étapes et interface dans [ext/README.md](ext/README.md). `python3 -m unittest discover -s tests` charge automatiquement chaque extension de `ext/` et l'exécute une fois sur une carte synthétique.
 
@@ -294,6 +295,7 @@ MapChecker/
     _template/                modèle pour une nouvelle extension (jamais exécuté automatiquement)
     altitude/                 points anormaux de l'altitude des voies, et graphique d'évolution de l'altitude
     crosswalk/                de combien un passage piéton dépasse au plus latéralement de la route
+    stopline/                 une ligne d'arrêt est-elle une droite de deux points
   tests/                      tests (python3 -m unittest discover -s tests)
   config/
     config.yaml               configuration des vérifications

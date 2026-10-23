@@ -8,6 +8,7 @@ Ce fichier recense les principales évolutions de chaque version de MapChecker, 
 
 ### Ajouté
 
+- **Extension `stopline`** : vérifie qu'une ligne d'arrêt (way avec `type=stop_line`) n'est formée que de deux points ; au-delà de 2 points (ligne brisée), WARNING avec la distance du point intermédiaire à la droite reliant les deux extrémités ; moins de 2 points ou nœud inexistant : ERROR. Voir [ext/stopline/README.md](../ext/stopline/README.md).
 - **Extension `altitude`** : détecte les points anormaux de l'altitude `ele` sur les bordures de voie (sauts, pics, dévers excessif, absence de `ele`) et génère dans le répertoire des logs un graphique d'évolution de l'altitude `<nom du log>_altitude.png`, voir [ext/altitude/README.md](../ext/altitude/README.md).
 - **Fenêtre interactive d'altitude** : avec `isShow: true` dans la configuration, une fenêtre indépendante montrant l'altitude en vue de dessus s'ouvre à la fin du rapport ; un clic sur un point anormal ou sur une lanelet affiche son profil en long et ses détails dans une seconde petite fenêtre.
 - **Toutes les informations de la carte** : `ctx.nodes` / `ctx.ways` / `ctx.relations` / `ctx.map` donnent accès à tous les nœuds, ways et relations du fichier de carte (tous les tags, attributs XML et membres) ainsi qu'à `MetaInfo` ; une nouvelle extension n'a pas besoin de modifier le code de lecture de la carte, voir [ext/README.md](../ext/README.md).
@@ -15,6 +16,7 @@ Ce fichier recense les principales évolutions de chaque version de MapChecker, 
 
 ### Modifié
 
+- Carte de chaleur : les ERROR de toutes les vérifications (extensions comprises) sont marquées par des points rouges, dessinés au-dessus des points de WARNING, avec leur nombre dans la légende.
 - Le README est désormais en français par défaut (`README.md`), la version chinoise est déplacée dans [doc/README.zh.md](README.zh.md).
 - **Les voies parallèles ne comptent pas comme chevauchement** (`parallel_min_length` 10 m par défaut, `parallel_min_gap` 1.5 m par défaut, en ligne de commande `--parallel-min-length` / `--parallel-min-gap`) : deux lanelets toutes deux droites, ou de sens opposés (par exemple les deux sens d'une route dans un virage), qui se chevauchent sur une longueur ≥ `parallel_min_length` et dont les lignes centrales restent à ≥ `parallel_min_gap` l'une de l'autre le long du chevauchement ne comptent plus comme chevauchement. Les voies qui se chevauchent le long d'une route étroite ou qui se rétrécit (par exemple des voies opposées dessinées trop larges) étaient auparavant signalées par la vérification 2 comme « crossing overlap without right_of_way », avec un p plutôt élevé à cause de leur grande surface, et par la vérification 1 comme « intersects other lanes » ; elles ne sont plus signalées par aucune des deux. Les convergences / croisements dont les lignes centrales se rejoignent, ainsi que les virages de même sens qui longent une voie voisine, ne sont pas concernés. Le modèle de notation a été réentraîné avec la nouvelle règle.
 - Les lanelets à la structure incomplète (pas exactement une bordure gauche et une bordure droite, ou référence à un way / nœud inexistant) étaient auparavant ignorées silencieusement ou faisaient planter le programme ; elles sont désormais listées au début du rapport : `Lanelets not loaded (incomplete, not checked): ...`.
@@ -22,6 +24,7 @@ Ce fichier recense les principales évolutions de chaque version de MapChecker, 
 
 ### Corrigé
 
+- Dans la liste des éléments ignorés en fin de rapport, un id qui n'est pas une lanelet mais qui a bien masqué des problèmes (par exemple le way d'une ligne d'arrêt pour stopline) est affiché `way <id> ... N issue(s) suppressed`, et non plus `not found in map`.
 - Carte de chaleur : un problème sans coordonnées était placé à la position moyenne des milieux des lanelets concernées, ce qui tombait dans un endroit sans rapport lorsqu'elles sont très éloignées, par exemple au milieu de la carte pour un right_of_way qui référence une lanelet d'une autre intersection. Au-delà de `heatmap.radius`, la position de la première lanelet est désormais utilisée ; le « do not overlap at all » de la vérification 2 est placé sur la lanelet qui référence l'élément de régulation.
 
 ## [3.0.0] - 2026-10-21
