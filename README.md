@@ -55,6 +55,7 @@ Les options de ligne de commande sont prioritaires sur le fichier de configurati
 | `--ignore-file FILE` | `ignore_file` |
 | `--[no-]using-lr` | `Using_LR` |
 | `--model-file FILE` | `model_file` |
+| `--map-min-p P` | `map_min_p` |
 | `--[no-]heatmap` | `heatmap.enabled` |
 | `--[no-]show-heatmap` | `isShow` |
 | `--no-color` | Sortie sans couleurs |
@@ -88,6 +89,7 @@ Les chemins relatifs sont relatifs à `MapChecker/`.
 | `autoware_checking` | `false` | `true` : exécute la vérification 3, nécessite ROS |
 | `isShow` | `false` | `true` : ouvre la fenêtre de la carte de chaleur à la fin du rapport (zoom, déplacement) ; le programme se termine à la fermeture de la fenêtre. Sans effet si `heatmap.enabled` n'est pas `true` ; sans interface graphique (par exemple en ssh), seul un message est affiché |
 | `Using_LR` | `false` | `true` : note les alertes avec `model_file` ; chaque vérification les affiche par score décroissant. Erreur si le fichier de modèle n'existe pas |
+| `map_min_p` | `0.0` | Avec `Using_LR` : les alertes notées dont le p est inférieur ne sont pas affichées sur la carte de chaleur (points, coloration, zones, fenêtre) ; le rapport et le log les listent toujours. `0` affiche tout |
 
 La valeur par défaut est celle utilisée lorsque le paramètre est absent du fichier de configuration ; le `config/config.yaml` du dépôt active `log`, `heatmap`, `ignore_isolated_turns`, `only_check_AOI`, `autoware_checking` et `Using_LR`.
 
@@ -134,6 +136,7 @@ Heatmap: .../logs/map_check_20261016_093357.png
 - **Position** : une alerte de la vérification 1 est placée au milieu de la ligne centrale de la lanelet (le `middle` du log), une alerte de `right_of_way` manquant de la vérification 2 au centre de la zone de chevauchement, les autres alertes à la moyenne des milieux des lanelets concernées ; les alertes sans lien avec une lanelet (nœud sans altitude, erreur de chargement de la carte) ne sont pas prises en compte. Les alertes ignorées ne sont pas prises en compte.
 - **Couleur** : densité par noyau gaussien (sigma = `radius / 2`), dont la valeur correspond à peu près au nombre de problèmes voisins. Un problème isolé apparaît en bleu ; plus les problèmes sont denses, plus la couleur tire vers le rouge. Les endroits sans problème sont transparents et laissent voir la carte.
 - **Zones** : on prend à chaque fois la position qui a le plus de problèmes restants dans un rayon de `radius` mètres comme zone ; les problèmes de cette zone ne comptent plus pour les zones suivantes. On continue jusqu'à avoir `heatmap.top` zones ou jusqu'à ce qu'aucune position restante n'ait au moins 2 problèmes. Sur l'image, les zones sont entourées d'un cercle et annotées `#rang nombre de problèmes`, avec la même numérotation que dans le log.
+- **Seulement les problèmes de p élevé** (`Using_LR: true`) : avec `map_min_p` > 0, les alertes notées dont le p est inférieur ne sont pas dessinées et n'interviennent ni dans la coloration ni dans les zones ; les Hotspots et le titre de la figure indiquent combien sont masquées, le rapport et le log ne changent pas.
 - **Pondération par p** (`Using_LR: true`) : une alerte notée compte pour p, une alerte non notée et une ERROR comptent pour 1 ; la couleur, la détermination des zones et le classement utilisent ce nombre pondéré, c'est-à-dire le nombre attendu de vrais problèmes. Les zones que le modèle juge surtout composées de faux positifs ont une couleur plus pâle, sont classées plus bas ou ne sont plus listées. Le log donne à la fois le nombre et la valeur pondérée, l'image annote la valeur pondérée :
   ```
   === Hotspots (at least 2 p-weighted issues within 30 m) ===

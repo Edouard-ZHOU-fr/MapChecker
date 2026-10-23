@@ -109,17 +109,27 @@ def _extent(lanelets, aois, pts, margin):
     return lo[0], lo[1], hi[0], hi[1]
 
 
-def report_hotspots(lanelets, aois, out, path, radius, top, map_name, show=False):
+def report_hotspots(lanelets, aois, out, path, radius, top, map_name, show=False, min_p=0.0):
     """
     List hotspots in the log and save the heatmap to path (png).
-    aois: AOI polygons when only checking the AOI, the figure is limited to the AOI; otherwise empty, draw the whole map
-    show: also create a window in pyplot, popped up later by show_windows()
+    aois:  AOI polygons when only checking the AOI, the figure is limited to the AOI; otherwise empty, draw the whole map
+    show:  also create a window in pyplot, popped up later by show_windows()
+    min_p: with a model, scored WARNINGs with p < min_p are not shown on the map (points, coloring, hotspots, window);
+           the report still lists them
     With a model (Using_LR), weighted by p, see the beginning of this module
     """
     weighted = out.model is not None
     unit = "p-weighted issues" if weighted else "issues"
     out.header(f"Hotspots (at least {MIN_HOTSPOT_ISSUES} {unit} within {radius:.0f} m)")
     pts, items, weights = issue_points(out, lanelets, radius)
+    note = ""
+    if weighted and min_p > 0:
+        keep = np.array([item[2] is None or item[2] >= min_p for item in items], dtype=bool)
+        hidden = int((~keep).sum())
+        if hidden:
+            pts, weights, items = pts[keep], weights[keep], [item for item, k in zip(items, keep) if k]
+            note = f" ({hidden} with p < {min_p:.2f} hidden)"
+            out.info(f"{hidden} scored warnings with p < {min_p:.2f} not shown on the map (map_min_p)")
     if not len(pts):
         out.info("No issue located on the map, heatmap not generated")
         return
@@ -142,7 +152,7 @@ def report_hotspots(lanelets, aois, out, path, radius, top, map_name, show=False
         out.info(f"Ext checks ({', '.join(f'{c} {n}' for c, n in ext.items())}): not counted in hotspots, "
                  f"shown as green dots in the heatmap")
 
-    _save_image(path, lanelets, aois, pts, items, weights, core, weighted, spots, radius, map_name, show)
+    _save_image(path, lanelets, aois, pts, items, weights, core, weighted, spots, radius, map_name, show, note)
     out.info(f"Heatmap: {path}")
 
 
@@ -165,7 +175,8 @@ def show_windows():
     plt.show()
 
 
-def _save_image(path, lanelets, aois, pts, items, weights, core, weighted, spots, radius, map_name, show=False):
+def _save_image(path, lanelets, aois, pts, items, weights, core, weighted, spots, radius, map_name, show=False,
+                note=""):
     """
     Save the heatmap; if show is True, draw the same figure again in a pyplot window (scaled down to the screen),
     the saved png is unaffected.
@@ -178,7 +189,8 @@ def _save_image(path, lanelets, aois, pts, items, weights, core, weighted, spots
     dens, img_extent = density(pts[core], weights[core], extent, radius / 2)
     w, h = extent[2] - extent[0], extent[3] - extent[1]
     figsize = (12, float(np.clip(12 * h / w, 5, 14)))
-    args = (lanelets, aois, pts, items, weights, core, weighted, spots, radius, map_name, extent, dens, img_extent)
+    args = (lanelets, aois, pts, items, weights, core, weighted, spots, radius, map_name, extent, dens, img_extent,
+            note)
 
     fig = Figure(figsize=figsize, dpi=SAVE_DPI, constrained_layout=True)
     _draw(fig, *args)
@@ -192,7 +204,7 @@ def _save_image(path, lanelets, aois, pts, items, weights, core, weighted, spots
 
 
 def _draw(fig, lanelets, aois, pts, items, weights, core, weighted, spots, radius, map_name, extent, dens,
-          img_extent):
+          img_extent, note=""):
     from matplotlib.cm import ScalarMappable
     from matplotlib.collections import PolyCollection
     from matplotlib.colors import LinearSegmentedColormap, Normalize
@@ -264,7 +276,8 @@ def _draw(fig, lanelets, aois, pts, items, weights, core, weighted, spots, radiu
     ax.tick_params(colors="#6b6b66", labelsize=8)
     for spine in ax.spines.values():
         spine.set_color("#d0d0cc")
-    located = f"{core.sum()} issues located" + (f" (p-weighted {weights[core].sum():.1f})" if weighted else "")
+    located = (f"{core.sum()} issues located" + (f" (p-weighted {weights[core].sum():.1f})" if weighted else "")
+               + note)
     if not core.all():
         located += f" + {(~core).sum()} ext (green dots)"
     fig.suptitle(f"MapChecker issue heatmap: {map_name}\n{located}, {len(spots)} hotspots, "

@@ -55,6 +55,7 @@ python3 check_lanelet_map.py --only-ext crosswalk     # 只运行扩展检查 cr
 | `--ignore-file FILE` | `ignore_file` |
 | `--[no-]using-lr` | `Using_LR` |
 | `--model-file FILE` | `model_file` |
+| `--map-min-p P` | `map_min_p` |
 | `--[no-]heatmap` | `heatmap.enabled` |
 | `--[no-]show-heatmap` | `isShow` |
 | `--no-color` | 不输出颜色 |
@@ -88,6 +89,7 @@ python3 check_lanelet_map.py --only-ext crosswalk     # 只运行扩展检查 cr
 | `autoware_checking` | `false` | `true`：运行检查 3，需要 ROS |
 | `isShow` | `false` | `true`：报告结束后弹出热力图窗口（可缩放、平移），关闭窗口后程序退出；只在 `heatmap.enabled: true` 时有效，没有图形界面（如 ssh）时只输出提示 |
 | `Using_LR` | `false` | `true`：用 `model_file` 给告警打分，各检查中按分数从高到低输出；模型文件不存在时报错 |
+| `map_min_p` | `0.0` | `Using_LR` 时，p 小于它的有分数告警不在热力图上显示（点、着色、区域和弹出窗口）；报告和日志中仍然列出。`0` 为全部显示 |
 
 默认值是配置文件中缺少该项时使用的值；仓库里的 `config/config.yaml` 打开了 `log`、`heatmap`、`ignore_isolated_turns`、`only_check_AOI`、`autoware_checking` 和 `Using_LR`。
 
@@ -134,6 +136,7 @@ Heatmap: .../logs/map_check_20261016_093357.png
 - **位置**：检查 1 的告警取 lanelet 中心线的中点（即日志中的 `middle`），检查 2 缺少 `right_of_way` 的告警取重叠区的中心，其他告警取相关 lanelet 中点的平均；与 lanelet 无关的告警（节点缺少高度、地图加载错误）不参与。被忽略的告警不参与。
 - **颜色**：高斯核密度（sigma = `radius / 2`），数值约为附近的问题数。只有 1 条孤立问题的地方为蓝色，问题越密集越接近红色；没有问题的地方透明，露出地图。
 - **区域**：每次取 `radius` 米内剩余问题最多的位置作为一个区域，区域内的问题不再计入之后的区域，直到找到 `heatmap.top` 个区域或剩下的位置都不足 2 条问题。图中用圆圈和 `#排名 问题数` 标注，与日志中的编号一致。
+- **只看 p 较高的问题**（`Using_LR: true`）：`map_min_p` 大于 0 时，p 低于它的有分数告警不画在图上，也不参与着色和区域判定；Hotspots 和图的标题中注明隐藏了多少条，报告和日志不受影响。
 - **按 p 加权**（`Using_LR: true`）：有分数的告警计 p 条，没有分数的告警和 ERROR 计 1 条，颜色、区域的判定和排名都用加权后的条数，即预计的真问题数；模型认为多半是误报的区域颜色更淡、排名靠后或不再列出。日志中同时给出条数和加权值，图中标注加权值：
   ```
   === Hotspots (at least 2 p-weighted issues within 30 m) ===

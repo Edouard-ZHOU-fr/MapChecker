@@ -170,7 +170,9 @@ class ExtensionTest(unittest.TestCase):
                     54: (w["l54"], w["r54"], "road", {})}   # opposite direction, left line 0.2 m inside 51: overlap
         write_osm(path, points, ways, lanelets)
 
-        ext = extmod.load(extmod.discover()["border_sharing"])
+        # parameters given explicitly, independent of the values in ext/border_sharing/config/config.yaml
+        params = {"max_distance": 1.0, "min_fraction": 0.8, "min_length": 2.0, "ignore": []}
+        ext = extmod.load(extmod.discover()["border_sharing"], params)
         out, text = run_extensions([ext], path)
         self.assertEqual(out.count["border_sharing"], 2, text)
         self.assertIn("lanelet 51 right (way 201) / lanelet 52 left (way 202): boundaries coincide over 50.0 m "
@@ -183,7 +185,7 @@ class ExtensionTest(unittest.TestCase):
         out, text = run_extensions([ext], path, ignore={"border_sharing": {"54": ""}})
         self.assertEqual(out.count["border_sharing"], 1, text)
 
-        ext = extmod.load(extmod.discover()["border_sharing"], {"max_distance": 0.1})
+        ext = extmod.load(extmod.discover()["border_sharing"], {**params, "max_distance": 0.1})
         out, text = run_extensions([ext], path)
         self.assertEqual(out.count["border_sharing"], 0, text)
 

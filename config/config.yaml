@@ -54,6 +54,9 @@ Using_LR: true                # true: use the logistic regression model (model_f
                               #   turn_direction / right_of_way, output [WARNING p=0.93], where p is the probability that the
                               #   warning is a true issue (will later be fixed by the map team); each check outputs by descending p;
                               #   train_model.py must be run first to generate the model, see README.md
+map_min_p: 0.5               # with Using_LR: scored WARNINGs whose p is below this are not shown in the heatmap (points,
+                              #   coloring, hotspots and the pop-up window); the report and the log still list them;
+                              #   0 shows all
 
 isShow: true                  # true: after the report, show the heatmap in a new pop-up window (zoom, pan, click an issue point
                               #   or lanelet to show the lanelet id), the program exits when the window is closed;

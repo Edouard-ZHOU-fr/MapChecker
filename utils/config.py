@@ -24,6 +24,7 @@ DEFAULT_CONFIG = {
     "only_check_AOI": False,
     "autoware_checking": False,
     "Using_LR": False,
+    "map_min_p": 0.0,
     "isShow": False,
 }
 
