@@ -274,6 +274,7 @@ Chaque sous-répertoire de `ext/` est une extension indépendante, avec son prop
 | Extension | Contenu |
 |---|---|
 | [altitude](ext/altitude/README.md) | Points anormaux de l'altitude `ele` sur les bordures de voie (sauts, pics, dévers excessif, absence de `ele`) ; génère aussi dans le répertoire des logs un graphique d'évolution de l'altitude `<nom du log>_altitude.png` |
+| [border_sharing](ext/border_sharing/README.md) | Des voies côte à côte partagent-elles la bordure entre elles ; WARNING si les deux bordures coïncident mais sont des ways différents (pas de changement de voie possible, interstice ou chevauchement entre voies opposées) |
 | [crosswalk](ext/crosswalk/README.md) | De combien un passage piéton dépasse au plus latéralement de la route ; WARNING au-delà de `max_extension` |
 | [stopline](ext/stopline/README.md) | Une ligne d'arrêt est-elle formée de deux points seulement (une droite et non une ligne brisée) ; WARNING au-delà de 2 points |
 
@@ -295,6 +296,7 @@ MapChecker/
     README.md                 comment écrire une extension (interface, ctx, out)
     _template/                modèle pour une nouvelle extension (jamais exécuté automatiquement)
     altitude/                 points anormaux de l'altitude des voies, et graphique d'évolution de l'altitude
+    border_sharing/           des voies côte à côte partagent-elles leur bordure
     crosswalk/                de combien un passage piéton dépasse au plus latéralement de la route
     stopline/                 une ligne d'arrêt est-elle une droite de deux points
   tests/                      tests (python3 -m unittest discover -s tests)

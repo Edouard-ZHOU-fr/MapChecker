@@ -13,6 +13,8 @@ Ce document liste tout ce que `check_lanelet_map.py` vérifie actuellement, et l
 | 3 | `autoware` | Tout le fichier de carte | `autoware_checking: true` (actuellement `false`), nécessite de sourcer ROS | WARNING / ERROR |
 | Extension | `altitude` | Altitude `ele` des nœuds des bordures des lanelets véhicule | `enable: true` (actuellement activée) | WARNING |
 | Extension | `crosswalk` | Lanelets `subtype=crosswalk` | `enable: true` (actuellement activée) | WARNING |
+| Extension | `stopline` | Ways `type=stop_line` | `enable: true` (actuellement activée) | WARNING / ERROR |
+| Extension | `border_sharing` | Paires de lanelets véhicule côte à côte | `enable: true` (actuellement activée) | WARNING |
 | Extension | `_template` | Tags des lanelets véhicule | Jamais automatiquement, seulement avec `--ext _template` | WARNING |
 
 ## Règles générales

@@ -13,6 +13,8 @@
 | 3 | `autoware` | 整个地图文件 | `autoware_checking: true`（当前 `false`），需要 source ROS | WARNING / ERROR |
 | 扩展 | `altitude` | 车辆 lanelet 边界节点的高程 `ele` | `enable: true`（当前开启） | WARNING |
 | 扩展 | `crosswalk` | `subtype=crosswalk` 的 lanelet | `enable: true`（当前开启） | WARNING |
+| 扩展 | `stopline` | `type=stop_line` 的 way | `enable: true`（当前开启） | WARNING / ERROR |
+| 扩展 | `border_sharing` | 并排的车辆 lanelet 对 | `enable: true`（当前开启） | WARNING |
 | 扩展 | `_template` | 车辆 lanelet 的标签 | 不自动运行，只在 `--ext _template` 时运行 | WARNING |
 
 ## 通用规则

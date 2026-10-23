@@ -153,6 +153,40 @@ class ExtensionTest(unittest.TestCase):
                 self.assertEqual(out.count["stopline"], 1, text)
                 self.assertEqual(out.suppressed[("stopline", ignored)], 1)
 
+    def test_border_sharing(self):
+        """border_sharing: side-by-side lanelets whose facing boundaries coincide but are different ways (same
+        direction with a gap, opposite directions with an overlap) are reported, a shared boundary is not"""
+        path = os.path.join(self.tmp, "border.osm")
+        y = {"l51": 3.5, "r51": 0.0, "l52": -0.2, "r52": -3.5, "r53": -7.0, "l54": 3.3, "r54": 7.0}
+        points, ways = {}, {}
+        for k, (name, yy) in enumerate(y.items()):
+            start, end = (50, 0) if name.endswith("54") else (0, 50)  # lanelet 54 goes in the -x direction
+            points[100 + 2 * k], points[101 + 2 * k] = (start, yy), (end, yy)
+            ways[200 + k] = (100 + 2 * k, 101 + 2 * k)
+        w = dict(zip(y, ways))
+        lanelets = {51: (w["l51"], w["r51"], "road", {}),
+                    52: (w["l52"], w["r52"], "road", {}),   # its own left line 0.2 m right of 51's right: gap
+                    53: (w["r52"], w["r53"], "road", {}),   # shares 52's right boundary
+                    54: (w["l54"], w["r54"], "road", {})}   # opposite direction, left line 0.2 m inside 51: overlap
+        write_osm(path, points, ways, lanelets)
+
+        ext = extmod.load(extmod.discover()["border_sharing"])
+        out, text = run_extensions([ext], path)
+        self.assertEqual(out.count["border_sharing"], 2, text)
+        self.assertIn("lanelet 51 right (way 201) / lanelet 52 left (way 202): boundaries coincide over 50.0 m "
+                      "(100% of the shorter) but are different ways, gap 0.20 m between the lanes; they are not "
+                      "adjacent in the routing graph", text)
+        self.assertIn("lanelet 51 left (way 200) / lanelet 54 left (way 205), opposite directions: boundaries coincide "
+                      "over 50.0 m (100% of the shorter) but are different ways, overlap 0.20 m between the lanes", text)
+        self.assertIn("3 pairs of side-by-side lanelets: 1 share their boundary, 2 do not", text)
+
+        out, text = run_extensions([ext], path, ignore={"border_sharing": {"54": ""}})
+        self.assertEqual(out.count["border_sharing"], 1, text)
+
+        ext = extmod.load(extmod.discover()["border_sharing"], {"max_distance": 0.1})
+        out, text = run_extensions([ext], path)
+        self.assertEqual(out.count["border_sharing"], 0, text)
+
     def test_altitude(self):
         """altitude: detection of step / spike / cross slope, nodes without ele, ignore list and trend chart"""
         ext = extmod.load(extmod.discover()["altitude"], {"plot": False})

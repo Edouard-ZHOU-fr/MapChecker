@@ -274,6 +274,7 @@ Heatmap: .../logs/map_check_20261016_093357.png
 | 扩展 | 内容 |
 |---|---|
 | [altitude](../ext/altitude/README.md) | 车道边界上高程 `ele` 的突兀点（跳变、尖峰、横坡过大、没有 `ele`），另外在日志目录生成高程趋势图 `<日志名>_altitude.png` |
+| [border_sharing](../ext/border_sharing/README.md) | 并排的车道是否共用中间的边界线；位置重合但各画一条（不同的 way）时报 WARNING，此时不能换道，对向车道之间可能有缝或重叠 |
 | [crosswalk](../ext/crosswalk/README.md) | crosswalk 在横向上最多超出道路多少，超出 `max_extension` 时报 WARNING |
 | [stopline](../ext/stopline/README.md) | 停止线是否只由两个点组成（一条直线而不是折线），多于 2 个点时报 WARNING |
 
@@ -295,6 +296,7 @@ MapChecker/
     README.md                 如何编写扩展检查 (接口、ctx、out)
     _template/                新扩展的模板 (不会自动运行)
     altitude/                 车道高程的突兀点，并生成高程趋势图
+    border_sharing/           并排的车道是否共用边界线
     crosswalk/                crosswalk 在横向上最多超出道路多少
     stopline/                 停止线是否为两点直线
   tests/                      测试 (python3 -m unittest discover -s tests)
