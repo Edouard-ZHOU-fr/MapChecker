@@ -5,7 +5,7 @@ from collections import defaultdict
 import numpy as np
 
 from .features import right_of_way_features
-from .geometry import fmt_xy, overlap_area, polygon_distance
+from .geometry import centerline, fmt_xy, overlap_area, polygon_distance
 from .lanelet_map import by_id
 
 
@@ -94,8 +94,13 @@ def _check_rules(lanelets, reg_elems, in_aoi, out):
                 # use finer sampling to confirm whether the two lanelets do not overlap at all
                 if overlap_area(lanelets[r], lanelets[y], step=0.1)[0] == 0:
                     dist = polygon_distance(lanelets[r].polygon, lanelets[y].polygon)
+                    # shown at the lanelet referencing this regulatory element (normally the priority one), i.e.
+                    # where it was drawn; the midpoint of two lanelets far apart would fall in an unrelated place
+                    at = y if re_.id in lanelets[y].reg_elems and re_.id not in lanelets[r].reg_elems else r
+                    center = centerline(lanelets[at])
                     out.error("right_of_way", f"right_of_way {re_.id}: lanelet {r} (right_of_way) and {y} (yield) "
-                                              f"do not overlap at all (min distance {dist:.1f} m)", (r, y))
+                                              f"do not overlap at all (min distance {dist:.1f} m)", (r, y),
+                              center[len(center) // 2])
     return covered_pairs(reg_elems)
 
 

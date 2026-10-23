@@ -20,6 +20,10 @@ Ce fichier recense les principales évolutions de chaque version de MapChecker, 
 - Les lanelets à la structure incomplète (pas exactement une bordure gauche et une bordure droite, ou référence à un way / nœud inexistant) étaient auparavant ignorées silencieusement ou faisaient planter le programme ; elles sont désormais listées au début du rapport : `Lanelets not loaded (incomplete, not checked): ...`.
 - **Incompatible** : `utils.lanelet_map.load_map()` renvoie un `LaneletMap` (auparavant `(lanelets, reg_elems, aois)`), et les paramètres de `MapContext(lanelet_map, opts, ...)` changent en conséquence ; `utils.heatmap.show_heatmap()` est renommée `show_windows()`. Les vérifications et extensions qui n'accèdent à la carte que via `ctx` ne sont pas concernées.
 
+### Corrigé
+
+- Carte de chaleur : un problème sans coordonnées était placé à la position moyenne des milieux des lanelets concernées, ce qui tombait dans un endroit sans rapport lorsqu'elles sont très éloignées, par exemple au milieu de la carte pour un right_of_way qui référence une lanelet d'une autre intersection. Au-delà de `heatmap.radius`, la position de la première lanelet est désormais utilisée ; le « do not overlap at all » de la vérification 2 est placé sur la lanelet qui référence l'élément de régulation.
+
 ## [3.0.0] - 2026-10-21
 
 Nouveau framework de vérifications par extension : il suffit de créer un répertoire sous `ext/` pour ajouter une vérification.

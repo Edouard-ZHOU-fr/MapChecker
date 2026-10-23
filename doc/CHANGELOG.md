@@ -20,6 +20,10 @@
 - 结构不完整的 lanelet（左 / 右边界不正好各一条，或引用了不存在的 way / 节点）以前被悄悄跳过或导致程序崩溃，现在在报告开头列出 `Lanelets not loaded (incomplete, not checked): ...`。
 - **不兼容**：`utils.lanelet_map.load_map()` 返回 `LaneletMap`（原来是 `(lanelets, reg_elems, aois)`），`MapContext(lanelet_map, opts, ...)` 的参数随之改变；`utils.heatmap.show_heatmap()` 改名为 `show_windows()`。只通过 `ctx` 使用地图的检查和扩展不受影响。
 
+### 修复
+
+- 热力图：没有给出坐标的问题取相关 lanelet 中点的平均位置，相关 lanelet 相距很远时会落在无关的地方，例如 right_of_way 引用了另一个路口的 lanelet 时被画在地图正中。现在相距超过 `heatmap.radius` 时改用第一条 lanelet 的位置；检查 2 的 "do not overlap at all" 画在引用该规则元素的 lanelet 上。
+
 ## [3.0.0] - 2026-10-21
 
 新增扩展检查框架：在 `ext/` 下新建一个目录，就能加入一项新的检查。

@@ -32,13 +32,15 @@ MAX_CLICK_LINES = 8      # maximum number of issues shown per click
 HIGHLIGHT_COLOR = "#f08c00"
 
 
-def issue_points(out, lanelets):
+def issue_points(out, lanelets, radius):
     """
     Positions of the WARNINGs / ERRORs recorded by Printer; returns
     (coordinates [N, 2], [(check, lanelet ids, p or None, the output line)], weights [N]),
     weights: p for a scored WARNING, 1 otherwise.
-    Without given coordinates, the mean of the centerline midpoints of the related lanelets is used; issues not related
-    to a lanelet (e.g. node missing height, map loading error) are not included
+    Without given coordinates, the mean of the centerline midpoints of the related lanelets is used; if they are more
+    than radius apart (e.g. a right_of_way referencing a lanelet of another intersection), the mean would fall in an
+    unrelated place, the midpoint of the first lanelet is used instead. Issues not related to a lanelet (e.g. node
+    missing height, map loading error) are not included
     """
     middles = {}
 
@@ -54,7 +56,9 @@ def issue_points(out, lanelets):
             known = [i for i in ids if i in lanelets]
             if not known:
                 continue
-            pos = np.mean([middle(i) for i in known], axis=0)
+            mids = np.array([middle(i) for i in known])
+            far = np.linalg.norm(mids[:, None] - mids[None], axis=-1).max() > radius
+            pos = mids[0] if far else mids.mean(axis=0)
         pts.append(pos)
         items.append((category, ids, p, line))
         weights.append(1.0 if p is None else p)
@@ -113,7 +117,7 @@ def report_hotspots(lanelets, aois, out, path, radius, top, map_name, show=False
     weighted = out.model is not None
     unit = "p-weighted issues" if weighted else "issues"
     out.header(f"Hotspots (at least {MIN_HOTSPOT_ISSUES} {unit} within {radius:.0f} m)")
-    pts, items, weights = issue_points(out, lanelets)
+    pts, items, weights = issue_points(out, lanelets, radius)
     if not len(pts):
         out.info("No issue located on the map, heatmap not generated")
         return
