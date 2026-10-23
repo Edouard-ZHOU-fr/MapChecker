@@ -1,4 +1,4 @@
-"""检查 1: 弯道 / 转弯的 turn_direction (转向灯)"""
+"""Check 1: turn_direction (turn signal) of curves / turns"""
 
 from .features import turn_direction_features
 from .geometry import arc_length, centerline, fmt_xy, max_heading_change
@@ -9,23 +9,25 @@ VALID_TURN_DIRECTIONS = {"left", "right", "straight"}
 
 def check_turn_direction(lanelets, intersecting, opts, out, ctx, autoware=None, step=0.5):
     """
-    intersecting: 与其他 lane 相交 (交叉 / 汇入，分叉不算) 的 lanelet id 集合
-      - 弯道: 应设置 turn_direction；ignore_isolated_turns 为 True 时，不相交的弯道被忽略
-      - 相交的直行 lanelet: 见 straight_as_turn_light
-    straight_as_turn_light: straight 是否算作已设置转向灯
-      - True:  只检查是否设置了 turn_direction (left/right/straight 均可)，不检查方向是否与几何一致；
-               弯道和相交的直行 lanelet 都必须设置
-      - False: 检查方向与几何是否一致；弯道标 straight 视为未设置 (警告)；相交的直行 lanelet 不要求标 straight
-    ctx: utils.features.lanelet_context() 的结果，用于计算告警的特征
-    autoware: Autoware 检查的 turn_direction 结果 {lanelet id: 冲突的 lanelet / area id}，None 表示未启用；
-              上面的几何检查已报告的 lanelet 不再重复输出，只补充几何检查漏掉的 (如分叉、重叠面积很小)
+    intersecting: set of ids of lanelets intersecting other lanes (crossing / merge, diverge does not count)
+      - curve: turn_direction should be set; if ignore_isolated_turns is True, isolated curves are ignored
+      - intersecting straight lanelet: see straight_as_turn_light
+    straight_as_turn_light: whether straight counts as a turn signal being set
+      - True:  only check that turn_direction is set (left/right/straight all OK), not that the direction matches geometry;
+               both curves and intersecting straight lanelets must have it set
+      - False: check that the direction matches the geometry; a curve tagged straight counts as not set (warning);
+               intersecting straight lanelets are not required to be tagged straight
+    ctx: result of utils.features.lanelet_context(), used to compute the features of warnings
+    autoware: turn_direction results of the Autoware check {lanelet id: conflicting lanelet / area ids}, None means disabled;
+              lanelets already reported by the geometry check above are not output again, only those missed by the
+              geometry check are added (e.g. diverge, very small overlap area)
     """
     turn_angle, window = opts["turn_angle"], opts["turn_window"]
     ignore_isolated, straight_ok = opts["ignore_isolated_turns"], opts["straight_as_turn_light"]
 
     out.header(f"Check 1: turn_direction on curves / turns (angle threshold {turn_angle:.0f}°, window {window:.0f} m)")
     n_turns = n_ignored = n_straight = n_autoware = n_autoware_only = 0
-    out.hold()  # 有模型时按 p 从大到小输出
+    out.hold()  # with a model, output in descending order of p
     for ll in sorted(lanelets.values(), key=by_id):
         td = ll.turn_direction
         if td is not None and td not in VALID_TURN_DIRECTIONS:
@@ -37,7 +39,7 @@ def check_turn_direction(lanelets, intersecting, opts, out, ctx, autoware=None, 
         msg = None
 
         if abs(angle) < turn_angle:
-            # 直行: 只检查与其他 lane 相交的
+            # straight: only check those intersecting other lanes
             if ll.id in intersecting:
                 n_straight += 1
                 if td is None and straight_ok:
@@ -52,7 +54,7 @@ def check_turn_direction(lanelets, intersecting, opts, out, ctx, autoware=None, 
             elif td is None:
                 msg = f"curve without turn_direction (geometry turns {geo}, suggest turn_direction={geo})"
             elif straight_ok:
-                pass  # 只检查是否设置，不检查方向
+                pass  # only check whether it is set, not the direction
             elif td == "straight":
                 msg = f"curve tagged turn_direction=straight, no turn signal (geometry turns {geo})"
             elif td != geo:
@@ -65,9 +67,10 @@ def check_turn_direction(lanelets, intersecting, opts, out, ctx, autoware=None, 
                 msg = f"conflicts with {', '.join(autoware[ll.id])} in Autoware routing graph without turn_direction"
 
         if msg:
-            where = f"middle {fmt_xy(center[len(center) // 2])}, angle {angle:+.0f}°, length {arc_length(center)[-1]:.1f} m"
+            middle = center[len(center) // 2]
+            where = f"middle {fmt_xy(middle)}, angle {angle:+.0f}°, length {arc_length(center)[-1]:.1f} m"
             out.warn("turn_direction", f"lanelet {ll.id}: {msg} | {where}", (ll.id,),
-                     turn_direction_features(ll, center, angle, opts, ctx))
+                     turn_direction_features(ll, center, angle, opts, ctx), middle)
     out.flush()
 
     if ignore_isolated:

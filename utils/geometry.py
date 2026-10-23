@@ -1,4 +1,4 @@
-"""几何工具 (坐标均为局部米制坐标)"""
+"""Geometry utilities (all coordinates are local metric coordinates)"""
 
 import math
 
@@ -6,7 +6,7 @@ import numpy as np
 
 
 def arc_length(p):
-    """折线各点处的累计弧长"""
+    """Cumulative arc length at each point of the polyline"""
     return np.r_[0.0, np.cumsum(np.linalg.norm(np.diff(p, axis=0), axis=1))]
 
 
@@ -40,14 +40,14 @@ def centerline(ll, step=0.5):
 
 def max_heading_change(center, step, window):
     """
-    在任意长度 <= window 的中心线片段内的最大航向变化 (度, 带符号: + 左转, - 右转)。
-    lanelet 比 window 短时，即为整条 lanelet 的转角。
+    Maximum heading change within any centerline segment of length <= window (degrees, signed: + left turn, - right turn).
+    If the lanelet is shorter than window, this is the turning angle of the whole lanelet.
     """
     seg = np.diff(center, axis=0)
     if len(seg) < 2:
         return 0.0
     heading = np.unwrap(np.arctan2(seg[:, 1], seg[:, 0]))
-    # 约 2 m 的滑动平均，去除节点处的折角噪声
+    # moving average over about 2 m, removes the kink noise at nodes
     k = max(1, min(int(round(2.0 / step)), len(heading) // 4))
     if k > 1:
         heading = np.convolve(heading, np.ones(k) / k, mode="valid")
@@ -62,7 +62,7 @@ def max_heading_change(center, step, window):
 
 
 def points_in_polygon(pts, poly):
-    """射线法判断点是否在多边形内 (向量化)"""
+    """Ray casting test of whether points are inside the polygon (vectorized)"""
     x, y = pts[:, 0:1], pts[:, 1:2]
     xi, yi = poly[None, :, 0], poly[None, :, 1]
     xj, yj = np.roll(poly[:, 0], -1)[None, :], np.roll(poly[:, 1], -1)[None, :]
@@ -73,7 +73,10 @@ def points_in_polygon(pts, poly):
 
 
 def interior_samples(ll, step=0.5):
-    """在 lanelet 内部按约 step 米的网格采样，返回 (点, 每个点代表的面积)。点都远离边界半个格子。"""
+    """
+    Sample the lanelet interior on a grid of about step meters, returns (points, area represented by each point).
+    All points are half a cell away from the boundary.
+    """
     length = 0.5 * (arc_length(ll.left)[-1] + arc_length(ll.right)[-1])
     n = max(2, int(math.ceil(length / step)))
     ratios = (np.arange(n) + 0.5) / n
@@ -88,7 +91,7 @@ def interior_samples(ll, step=0.5):
 
 
 def overlap_area(a, b, step=0.5, cache=None):
-    """两个 lanelet 的重叠面积 (内部采样估算) 和落在重叠区内的采样点"""
+    """Overlap area of two lanelets (estimated by interior sampling) and the sample points inside the overlap"""
     best_area, best_pts = 0.0, np.empty((0, 2))
     for x, y in ((a, b), (b, a)):
         key = (x.id, step)
@@ -108,7 +111,10 @@ def overlap_area(a, b, step=0.5, cache=None):
 
 
 def principal_extent(pts):
-    """点集沿主方向 (PCA 第一主轴) 的长度；交叉路口的重叠区约为车道宽，狭窄道路上平行车道的重叠区很长"""
+    """
+    Length of the point set along the principal direction (first PCA axis); at an intersection the overlap is about one
+    lane width, for parallel lanes on a narrow road the overlap is very long
+    """
     if len(pts) < 2:
         return 0.0
     c = pts - pts.mean(axis=0)
@@ -117,15 +123,38 @@ def principal_extent(pts):
 
 def centerline_enters(a, b, step=0.5):
     """
-    至少一条 lanelet 的中心线进入另一条 lanelet 的范围，即车辆会驶入对方车道 (真的交叉)；
-    否则两条 lanelet 只是边缘相碰，例如分叉起点蹭到对向车道、狭窄道路上的平行车道
+    The centerline of at least one lanelet enters the other lanelet, i.e. the vehicle drives into the other lane (a real
+    crossing); otherwise the two lanelets only touch at the edges, e.g. the start of a diverge grazing the oncoming
+    lane, parallel lanes on a narrow road
     """
     return bool(points_in_polygon(centerline(b, step), a.polygon).any()
                 or points_in_polygon(centerline(a, step), b.polygon).any())
 
 
+def heading_at(center, pos):
+    """Unit direction vector at the point of the centerline closest to pos"""
+    i = min(int(np.argmin(np.linalg.norm(center - pos, axis=1))), len(center) - 2)
+    d = center[i + 1] - center[i]
+    return d / max(np.linalg.norm(d), 1e-12)
+
+
+def centerline_gap(a, b, pts, step=0.5):
+    """
+    Minimum distance between the centerlines of two lanelets alongside their overlap (centerline points within 2 step
+    of an overlap point pts): parallel lanes (e.g. lanes of a narrowing road) stay apart along the whole overlap, while
+    the centerlines of crossing / converging lanes come together
+    """
+    best = math.inf
+    ca, cb = centerline(a, step), centerline(b, step)
+    for c, other in ((ca, cb), (cb, ca)):
+        near = np.min(np.linalg.norm(c[:, None] - pts[None], axis=2), axis=1) <= 2 * step
+        if near.any():
+            best = min(best, float(np.min(np.linalg.norm(c[near][:, None] - other[None], axis=2))))
+    return best
+
+
 def polygon_distance(pa, pb):
-    """两个不相交多边形边界之间的最小距离"""
+    """Minimum distance between the boundaries of two non-intersecting polygons"""
     def vertex_to_edges(p, poly):
         a, ab = poly[None], (np.roll(poly, -1, axis=0) - poly)[None]
         t = np.clip(((p[:, None] - a) * ab).sum(-1) / np.maximum((ab ** 2).sum(-1), 1e-12), 0.0, 1.0)
@@ -134,7 +163,10 @@ def polygon_distance(pa, pb):
 
 
 def lanelets_in_aoi(lanelets, aois, step=1.0):
-    """完全位于 AOI 内的 lanelet id: 左右边界按 step 米采样后，所有点都落在 AOI 多边形内"""
+    """
+    Ids of lanelets entirely inside the AOI: after sampling the left and right boundaries every step meters, all points
+    fall inside the AOI polygons
+    """
     result = set()
     for ll in lanelets.values():
         pts = np.vstack([ll.left, ll.right, resample_by_step(ll.left, step), resample_by_step(ll.right, step)])

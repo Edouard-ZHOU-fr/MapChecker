@@ -1,0 +1,12 @@
+# Configuration of the extension check (template), see README.md
+# The map (input), log and only_check_AOI use the settings in config/config.yaml;
+# the command line --set <name>.<param>=<value> takes precedence over the settings here
+
+enable: false        # true: check_lanelet_map.py runs this check (directories starting with _ such as _template
+                     #   are not run automatically)
+
+# Parameters of this extension, see DEFAULT_CONFIG in the script for default values
+required_tags: [speed_limit]
+
+# Lanelet ids ignored by this check, same syntax as config/ignore.yaml: [614, 615: reason]
+ignore: []

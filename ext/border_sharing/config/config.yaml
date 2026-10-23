@@ -1,0 +1,18 @@
+# Configuration of the extension check border_sharing, see ext/border_sharing/README.md
+# The map (input), log and only_check_AOI use the settings in config/config.yaml;
+# the command line --set border_sharing.<param>=<value> takes precedence over the settings here
+
+enable: false         # true: check_lanelet_map.py runs this check (ignored when --ext / --only-ext is given)
+
+# Facing boundaries of two side-by-side vehicle lanelets that are different ways count as "the same line drawn twice"
+# when they are closer than max_distance (m) along at least min_fraction of the shorter of the two boundaries, and
+# along at least min_length (m). In 15 maps, such pairs coincide along >= 90% of the boundary with a gap / overlap of
+# 0 ~ 1 m, while boundaries close over only a part of their length (e.g. turning lanes passing each other in an
+# intersection) mostly stay below 70%. Lanes really separated by a median narrower than max_distance: ignore them
+max_distance: 0.1
+min_fraction: 0.8
+min_length: 2.0
+
+# Lanelet ids ignored by this check, same syntax as config/ignore.yaml: [5353, 9684: reason]
+# (can also be written under border_sharing: in config/ignore.yaml; lanelets under all: are also ignored in this check)
+ignore: []

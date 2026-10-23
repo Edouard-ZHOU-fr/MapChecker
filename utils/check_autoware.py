@@ -1,13 +1,13 @@
-"""检查 3: Autoware 官方检查 (validate_autoware_map.py) 的结果；其中 turn_direction 已合并到检查 1"""
+"""Check 3: results of the official Autoware check (validate_autoware_map.py); turn_direction is merged into Check 1"""
 
 MAX_LISTED_NODES = 10
 
 
 def check_autoware(result, aoi_ids, out):
     """
-    result:  validate_autoware_map.validate() 的结果
-    aoi_ids: 红绿灯问题只报告引用它的 lanelet 在其中的；None 表示检查整张地图。
-             load / elevation 是整张地图的问题，不受 AOI 和 ignore 影响
+    result:  result of validate_autoware_map.validate()
+    aoi_ids: only report traffic light issues whose referencing lanelets are in it; None means check the whole map.
+             load / elevation are whole-map issues, not affected by AOI and ignore
     """
     out.header("Check 3: Autoware validation (autoware_lanelet2_validation, turn_direction merged into Check 1)")
     out.info(f"format_version: {result.format_version or '-'}, map_version: {result.map_version or '-'}")

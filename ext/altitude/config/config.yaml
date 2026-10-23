@@ -1,0 +1,25 @@
+# Configuration of the extension check altitude, see ext/altitude/README.md
+# The map (input), log and only_check_AOI use the settings in config/config.yaml;
+# the command line --set altitude.<param>=<value> takes precedence over the settings here
+
+enable: true         # true: check_lanelet_map.py runs this check (ignored when --ext / --only-ext is given)
+
+# Abrupt point criteria (slope = height difference / horizontal distance, 0.15 means 15%)
+max_slope: 0.30        # max slope between two adjacent points on a lane boundary, above it: step; if the segments
+                       #   before and after both exceed it in opposite directions: spike
+max_cross_slope: 0.20  # max cross slope between a point on one boundary of a lanelet and the other boundary (cross)
+min_step: 0.5          # height differences below it (m) are not reported, to avoid false reports from measurement
+                       #   noise and nearly coincident points
+
+# Elevation trend chart: map_check_YYYYmmdd_HHMMSS_altitude.png in the log directory, named like the log
+# (requires matplotlib)
+plot: true             # true: generate the trend chart (top: top view with lanes colored by elevation; bottom:
+                       #   elevation profiles of the lanes with abrupt points)
+max_profiles: 12       # max number of abrupt points whose elevation profile is drawn (the largest height differences)
+isShow: true           # true: pop up the elevation top view window after the report (separate from the heatmap window, can
+                       #   zoom / pan), clicking an abrupt point / lanelet shows its elevation profile in another small
+                       #   window; requires a GUI (otherwise only a message is printed), independent of plot
+
+# Lanelet ids ignored by this check, same syntax as config/ignore.yaml: [19942, 19991: reason]
+# (can also be written under altitude: in config/ignore.yaml; lanelets under all: are also ignored in this check)
+ignore: []

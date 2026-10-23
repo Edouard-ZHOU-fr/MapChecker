@@ -1,15 +1,16 @@
-# 手动忽略的 lanelet
-# 被忽略的 lanelet 不再输出对应的 WARNING / ERROR，并在报告末尾列出
+# Manually ignored lanelets
+# The corresponding WARNING / ERROR of ignored lanelets are no longer output, and they are listed at the end of the report
 #
-# 写法:
-#   - 614                       只写 lanelet id
-#   - 614: 主路弯道，不需要转向灯   lanelet id: 忽略原因
+# Syntax:
+#   - 614                                            lanelet id only
+#   - 614: main road curve, no turn signal needed    lanelet id: reason for ignoring
 #
-# all:            所有检查都忽略
-# turn_direction: 只在检查 1 (转向灯) 中忽略
-# right_of_way:   只在检查 2 (路权) 中忽略，涉及该 lanelet 的重叠对和 right_of_way 规则元素都不再报告
-# autoware:       只在检查 3 (Autoware) 中忽略，即该 lanelet 引用的红绿灯问题
-#                 (Autoware 的 turn_direction 结果合并在检查 1 中，按 turn_direction 忽略)
+# all:            ignored in all checks
+# turn_direction: ignored only in Check 1 (turn signal)
+# right_of_way:   ignored only in Check 2 (right of way), overlapping pairs and right_of_way regulatory elements involving
+#                 this lanelet are no longer reported
+# autoware:       ignored only in Check 3 (Autoware), i.e. the traffic light issues referenced by this lanelet
+#                 (the turn_direction results of Autoware are merged into Check 1, ignored via turn_direction)
 
 all: [
       13252: "roule pas", 17618,15407,18168,12683,13535,14866,

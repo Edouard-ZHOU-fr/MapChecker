@@ -1,31 +1,33 @@
-"""检查 2: 重叠 lanelet 的 right_of_way (路权)"""
+"""Check 2: right_of_way (right of way) of overlapping lanelets"""
 
 from collections import defaultdict
 
 import numpy as np
 
 from .features import right_of_way_features
-from .geometry import fmt_xy, overlap_area, polygon_distance
+from .geometry import centerline, fmt_xy, overlap_area, polygon_distance
 from .lanelet_map import by_id
 
 
 def check_right_of_way(lanelets, reg_elems, overlaps, aoi_ids, opts, out):
     """
-    overlaps: find_overlaps() 的结果
-    aoi_ids:  只报告涉及的 lanelet 全部在其中的问题；None 表示检查整张地图
+    overlaps: result of find_overlaps()
+    aoi_ids:  only report issues whose involved lanelets are all in it; None means check the whole map
     """
-    out.header(f"Check 2: right_of_way on overlapping lanelets (min overlap area {opts['min_overlap_area']:.1f} m²)")
+    out.header(f"Check 2: right_of_way on overlapping lanelets (min overlap area {opts['min_overlap_area']:.1f} m², "
+               f"parallel lanes excluded: straight or opposite, overlap >= {opts['parallel_min_length']:.0f} m, centerlines >= "
+               f"{opts['parallel_min_gap']:.1f} m apart)")
 
     def in_aoi(*ids):
         return aoi_ids is None or all(i in aoi_ids for i in ids)
 
     covered = _check_rules(lanelets, reg_elems, in_aoi, out)
 
-    # 交叉 / 汇入的 lanelet 对需要 right_of_way (同一条 lane 分叉出来的不需要)
+    # crossing / merging lanelet pairs need a right_of_way (those diverging from the same lane do not)
     has_tl = {ll.id: any(r in reg_elems and reg_elems[r].subtype == "traffic_light" for r in ll.reg_elems)
               for ll in lanelets.values()}
     n_conflicts = n_covered = n_ignored = 0
-    missing = []  # (a, b, 描述, 位置, 特征)
+    missing = []  # (a, b, description, position, features)
     for a_id, b_id, rel, area, pos, _ in overlaps:
         if rel == "diverge" or not in_aoi(a_id, b_id):
             continue
@@ -47,14 +49,15 @@ def check_right_of_way(lanelets, reg_elems, overlaps, aoi_ids, opts, out):
         center = np.mean([it[3] for it in items], axis=0)
         out.info(f"-- Area {k}, center {fmt_xy(center)}, lanelets: {' '.join(ids)}")
         if not out.model:
-            for a_id, b_id, text, _, features in items:
-                out.warn("right_of_way", f"lanelet {a_id} / {b_id}: {text}", (a_id, b_id), features)
+            for a_id, b_id, text, pos, features in items:
+                out.warn("right_of_way", f"lanelet {a_id} / {b_id}: {text}", (a_id, b_id), features, pos)
     if out.model:
-        # 有模型时先列出所有区域，再把所有区域的告警一起按 p 从大到小输出，每条注明所在区域
+        # with a model, list all areas first, then output the warnings of all areas together by descending p,
+        # each one noting its area
         out.hold()
         for k, items in enumerate(groups, 1):
-            for a_id, b_id, text, _, features in items:
-                out.warn("right_of_way", f"lanelet {a_id} / {b_id} (area {k}): {text}", (a_id, b_id), features)
+            for a_id, b_id, text, pos, features in items:
+                out.warn("right_of_way", f"lanelet {a_id} / {b_id} (area {k}): {text}", (a_id, b_id), features, pos)
         out.flush()
 
     out.info(f"{n_conflicts} overlapping lanelet pairs detected: {n_covered} with right_of_way, "
@@ -64,13 +67,13 @@ def check_right_of_way(lanelets, reg_elems, overlaps, aoi_ids, opts, out):
 
 
 def covered_pairs(reg_elems):
-    """right_of_way 规则元素覆盖的 lanelet 对 {frozenset((right_of_way, yield))}"""
+    """lanelet pairs covered by right_of_way regulatory elements {frozenset((right_of_way, yield))}"""
     return {frozenset((r, y)) for re_ in reg_elems.values() if re_.subtype == "right_of_way"
             for r in re_.refs("right_of_way") for y in re_.refs("yield")}
 
 
 def _check_rules(lanelets, reg_elems, in_aoi, out):
-    """检查已有 right_of_way 规则元素本身的问题，返回其覆盖的 lanelet 对"""
+    """Check issues of the existing right_of_way regulatory elements themselves, return the lanelet pairs they cover"""
     for re_ in sorted(reg_elems.values(), key=by_id):
         if re_.subtype != "right_of_way":
             continue
@@ -88,16 +91,21 @@ def _check_rules(lanelets, reg_elems, in_aoi, out):
             for y in yields:
                 if r not in lanelets or y not in lanelets or not in_aoi(r, y):
                     continue
-                # 用更细的采样确认两条 lanelet 是否完全没有重叠
+                # use finer sampling to confirm whether the two lanelets do not overlap at all
                 if overlap_area(lanelets[r], lanelets[y], step=0.1)[0] == 0:
                     dist = polygon_distance(lanelets[r].polygon, lanelets[y].polygon)
+                    # shown at the lanelet referencing this regulatory element (normally the priority one), i.e.
+                    # where it was drawn; the midpoint of two lanelets far apart would fall in an unrelated place
+                    at = y if re_.id in lanelets[y].reg_elems and re_.id not in lanelets[r].reg_elems else r
+                    center = centerline(lanelets[at])
                     out.error("right_of_way", f"right_of_way {re_.id}: lanelet {r} (right_of_way) and {y} (yield) "
-                                              f"do not overlap at all (min distance {dist:.1f} m)", (r, y))
+                                              f"do not overlap at all (min distance {dist:.1f} m)", (r, y),
+                              center[len(center) // 2])
     return covered_pairs(reg_elems)
 
 
 def _group_by_area(missing):
-    """按区域 (重叠关系的连通分量，通常就是一个路口) 分组"""
+    """Group by area (connected components of the overlap relation, usually one intersection)"""
     parent = {}
 
     def find(x):

@@ -1,0 +1,10 @@
+# Configuration of the extension check stopline, see ext/stopline/README.md
+# The map (input), log and only_check_AOI use the settings in config/config.yaml;
+# the command line --set stopline.<param>=<value> takes precedence over the settings here
+
+enable: true         # true: check_lanelet_map.py runs this check (ignored when --ext / --only-ext is given)
+
+# Ids ignored by this check, same syntax as config/ignore.yaml: [7731, 7732: reason]; either the stop line (way id)
+# or a lanelet referencing it (can also be written under stopline: in config/ignore.yaml; lanelets under all: are
+# also ignored in this check)
+ignore: []
