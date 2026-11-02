@@ -2,7 +2,7 @@
 # The map (input), log and only_check_AOI use the settings in config/config.yaml;
 # the command line --set altitude.<param>=<value> takes precedence over the settings here
 
-enable: true         # true: check_lanelet_map.py runs this check (ignored when --ext / --only-ext is given)
+enable: false         # true: check_lanelet_map.py runs this check (ignored when --ext / --only-ext is given)
 
 # Abrupt point criteria (slope = height difference / horizontal distance, 0.15 means 15%)
 max_slope: 0.30        # max slope between two adjacent points on a lane boundary, above it: step; if the segments

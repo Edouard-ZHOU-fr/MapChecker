@@ -2,7 +2,7 @@
 
 中文 | [Français](checkinglist.fr.md)
 
-本文列出 `check_lanelet_map.py` 目前检查的所有项目，以及每条 WARNING / ERROR 在什么条件下输出。内容按 2026-10-21 的代码整理；文中的"当前值"取自 `config/config.yaml` 和 `ext/<名称>/config/config.yaml`，修改配置后以配置文件为准。
+本文列出 `check_lanelet_map.py` 目前检查的所有项目，以及每条 WARNING / ERROR 在什么条件下输出。内容按 2026-10-30 的代码整理；文中的"当前值"取自 `config/config.yaml` 和 `ext/<名称>/config/config.yaml`，修改配置后以配置文件为准。
 
 ## 总览
 
@@ -11,15 +11,16 @@
 | 1 | `turn_direction` | 车辆 lanelet | 总是运行（`--only-ext` 时跳过） | WARNING |
 | 2 | `right_of_way` | 重叠的车辆 lanelet 对、`right_of_way` 规则元素 | 总是运行（`--only-ext` 时跳过） | WARNING / ERROR |
 | 3 | `autoware` | 整个地图文件 | `autoware_checking: true`（当前 `false`），需要 source ROS | WARNING / ERROR |
-| 扩展 | `altitude` | 车辆 lanelet 边界节点的高程 `ele` | `enable: true`（当前开启） | WARNING |
+| 扩展 | `altitude` | 车辆 lanelet 边界节点的高程 `ele` | `enable: true`（当前关闭） | WARNING |
 | 扩展 | `crosswalk` | `subtype=crosswalk` 的 lanelet | `enable: true`（当前开启） | WARNING |
 | 扩展 | `stopline` | `type=stop_line` 的 way | `enable: true`（当前开启） | WARNING / ERROR |
-| 扩展 | `border_sharing` | 并排的车辆 lanelet 对 | `enable: true`（当前开启） | WARNING |
+| 扩展 | `border_sharing` | 并排的车辆 lanelet 对 | `enable: true`（当前关闭） | WARNING |
+| 扩展 | `trafficlight` | `subtype=traffic_light` 的规则元素 | `enable: true`（当前开启） | WARNING / ERROR |
 | 扩展 | `_template` | 车辆 lanelet 的标签 | 不自动运行，只在 `--ext _template` 时运行 | WARNING |
 
 ## 通用规则
 
-- **车辆 lanelet**：`subtype` 为 `road`、`highway` 或 `road_shoulder` 的 lanelet。检查 1、2 和 altitude 只检查车辆 lanelet。
+- **车辆 lanelet**：`subtype` 为 `road`、`highway` 或 `road_shoulder` 的 lanelet。检查 1、2、altitude 和 border_sharing 只检查车辆 lanelet；trafficlight 只检查车辆 lanelet 对红绿灯的使用。
 - **级别**：`[WARNING]` 需要人工确认；`[ERROR]` 确定有错。
 - **退出码**：`0` 没有问题；`1` 有未被忽略的 WARNING / ERROR；`2` 参数、配置或环境错误。
 - **忽略列表**（`config/ignore.yaml`，以及各扩展配置中的 `ignore`）：
@@ -32,8 +33,8 @@
   - 地图中没有 AOI 时不做任何检查，直接结束（退出码 `0`）。
 - **只输出提示、不算问题**：
   - 无法解析的 lanelet（缺少左 / 右边界、边界 way 不存在、引用了不存在的节点）：在报告开头的 `Lanelets not loaded (incomplete, not checked)` 中列出，不参与任何检查。
-  - 不与任何车道重叠的 crosswalk：只列出 id。
-  - `Using_LR` 的打分 `p`、Hotspots 和热力图：只给已输出的问题打分、排序、统计，不会增加或隐藏任何问题。
+  - 不与任何车道重叠的 crosswalk、没有被任何规则元素引用的停止线和 `traffic_light` way、只被非车辆 lanelet 引用的红绿灯（如 crosswalk 的行人信号灯）：只列出 id。
+  - `Using_LR` 的打分 `p`、Hotspots、热力图和减速 masque（`masque.enabled: true`，当前 `false`）：只给已输出的问题打分、排序、统计，不会增加或隐藏报告中的任何问题。`map_min_p`（当前 0.5）只决定热力图中画出哪些问题，报告和日志中仍全部列出。
 
 ## 基本概念（检查 1、2 共用）
 
@@ -41,7 +42,7 @@
 |---|---|
 | 弯道 | 中心线（左右边界的平均）在任意一段长度不超过 `turn_window`（当前 30 m）的区间内，航向变化 ≥ `turn_angle`（当前 30°）。航向先做约 2 m 的滑动平均，去掉节点处的折角噪声；比 `turn_window` 短的 lanelet 就是整条的转角。正值为左转，负值为右转 |
 | 直行 | 不是弯道 |
-| 重叠 | 两条车辆 lanelet 的重叠面积 ≥ `min_overlap_area`（当前 1.0 m²，按 0.5 m 网格采样估算）。两条都是直行、或方向相反（重叠处航向差 > 150°）的 lanelet，重叠如果长度 ≥ `parallel_min_length`（当前 10 m），且沿重叠段两条中心线始终相距 ≥ `parallel_min_gap`（当前 1.5 m），算平行车道（如狭窄或变窄的道路上沿路重叠），不算重叠。前后相接（一条是另一条的前继 / 后继）和左右相邻（共用边界 way）的不算重叠 |
+| 重叠 | 两条车辆 lanelet 的重叠面积 ≥ `min_overlap_area`（当前 1.0 m²，按 0.5 m 网格采样估算）。两条都是直行、或方向相反（重叠处航向差 > 150°）的 lanelet，重叠如果长度 ≥ `parallel_min_length`（当前 30 m），且沿重叠段两条中心线始终相距 ≥ `parallel_min_gap`（当前 1.8 m），算平行车道（如狭窄或变窄的道路上沿路重叠），不算重叠。前后相接（一条是另一条的前继 / 后继）和左右相邻（共用边界 way）的不算重叠 |
 | 分叉 diverge | 重叠的两条 lanelet 有共同的前继，或起点相同 |
 | 汇入 merge | 重叠的两条 lanelet 有共同的后继，或终点相同 |
 | 交叉 crossing | 重叠，但既不是分叉也不是汇入 |
@@ -144,6 +145,90 @@
 | 超出道路过多 | crosswalk 某一端超出道路的长度 > `max_extension`。道路是与 crosswalk 重叠的所有车辆 lanelet 的并集；沿 crosswalk 方向测量，在宽度方向每隔 0.1 m 取一条线，沿线每 0.01 m 采样，每端取所有线中的最大值 | `[WARNING] crosswalk <id>: extends up to 2.10 m beyond the road (max 0.50 m) \| ...` |
 | 没有超出过多 | ≤ `max_extension`；端点落在道路内时这一端为 0 | 只输出测量值，不算问题 |
 | 不与车道重叠 | 不与任何车辆 lanelet 重叠 | 只在末尾列出 id，不检查 |
+
+## 扩展检查 `stopline`
+
+检查对象：地图中所有 `type=stop_line` 的 way，不论是否被规则元素引用。本检查没有参数。
+
+| 级别 | 输出条件 | 输出信息 |
+|---|---|---|
+| WARNING | 超过 2 个节点（折线）。给出离两端连线最远的中间节点及其距离：距离为 0 表示只是落在直线上的多余节点，删掉即可 | `stop_line <id>: 3 points (polyline), should be a straight line of 2 points; node N is 1.00 m off the line between its ends (length 7.3 m) \| lanelet <id> at (x, y)` |
+| ERROR | 少于 2 个节点 | `stop_line <id>: only 1 point(s), a stop line needs 2 \| ...` |
+| ERROR | 引用了地图中不存在的节点 | `stop_line <id>: references node(s) ... missing from the map \| ...` |
+
+- `| lanelet ...` 为通过规则元素的 `ref_line` 引用这条停止线的 lanelet，没有时为 `not referenced by any regulatory element`。
+- 忽略列表中既可以写停止线的 way id，也可以写引用它的 lanelet id。
+- `only_check_AOI: true` 时只检查完全位于 AOI 内的停止线。
+
+## 扩展检查 `border_sharing`
+
+检查对象：并排的两条车辆 lanelet"面对面"的边界。同向时比较一条的右边界与另一条的左边界，对向时比较两条的左边界或两条的右边界。当前值：`max_distance: 0.1` m、`min_fraction: 0.8`、`min_length: 2.0` m。
+
+沿一条边界每 0.5 m 取一个点。点到另一条边界的距离 ≤ `max_distance`，且两条边界方向平行（对向时反平行，夹角约 25° 以内）时，这个点算作重合。
+
+| 情况 | 判定 | 输出 |
+|---|---|---|
+| 同向车道没有共用边界 | 两条边界是不同的 way，重合部分 ≥ `min_length`，且 ≥ 较短那条边界长度的 `min_fraction` | `[WARNING] lanelet <a> left (way ..) / lanelet <b> right (way ..): boundaries coincide over 21.0 m (100% of the shorter) but are different ways, gap 0.26 m between the lanes; they are not adjacent in the routing graph, no lane change between them \| at (x, y)` |
+| 对向车道没有共用中心线 | 同上，两条车道方向相反 | `[WARNING] lanelet <a> left (way ..) / lanelet <b> left (way ..), opposite directions: boundaries coincide over ... but are different ways, ...; opposite lanes should share one center line \| at (x, y)` |
+| 已共用 | 两条边界是同一个 way | 只计数，不报告 |
+| 只是局部靠近 | 重合部分达不到上面的长度 / 比例，例如路口里互相经过的转弯车道 | 不报告 |
+
+- 两条线的相对位置取重合部分有符号距离的中位数：`drawn on top of each other`（重合在一起）、`gap x m between the lanes`（车道之间有缝隙）、`overlap x m between the lanes`（车道互相重叠）。
+- `only_check_AOI: true` 时只检查两条都完全位于 AOI 内的车道对。
+
+## 扩展检查 `trafficlight`
+
+检查对象：`subtype=traffic_light` 的规则元素。按 Autoware 的 traffic_light 模块和 milla 的相机匹配（`milla_traffic_light_matching`）实际使用红绿灯的方式检查，每条问题的后果见 [ext/trafficlight/README.md](../ext/trafficlight/README.md)。
+
+当前值：`max_facing_angle: 40`°、`min_forward_distance: 1.0` m、`min_height: 0.5` / `max_height: 5.0` m、`stop_line_extend_length: 5.0` m、`same_direction_angle: 45`°、`check_light_bulbs: false`（`bulb_max_offset: 1.0` m）。
+
+| 概念 | 判定 |
+|---|---|
+| 停车点、车道方向 | 车道中心线与停止线（第一个 `ref_line`）的第一个交点，以及中心线在该处的方向。这条 lanelet 上没有交点时，依次在它的后继、前继上找 |
+| 灯能被识别 | `traffic_light_type=camera` 的灯：灯的方向（linestring 方向 + 90°，即从停止线看过去从左往右画）与车道方向相差 ≤ `max_facing_angle`，且灯框中心沿车道方向在停车点前方 ≥ `min_forward_distance`。`v2x` 的灯总是算能识别 |
+| 灯高 | 灯框中心（灯 linestring 的高程 + `height` / 2）比停止线（节点 `ele` 的平均值）高多少米。缺少 `ele` 时不检查 |
+
+**识别与停止线**（每条使用这个红绿灯的车辆 lanelet 分别检查）：
+
+| 级别 | 输出条件 | 输出信息 |
+|---|---|---|
+| ERROR | 从这条车道上没有一个灯能被识别：相机灯都朝向不对或不在停车点前方，又没有 `v2x` 的灯 | `traffic_light <id> \| lanelet <id>: no light can be recognized from the lanelet (light <w>: faces away, facing error +175° (max 40°); drawn right -> left, reverse its node order): ...`；没有 `camera` / `v2x` 的灯时括号中为 `no light with traffic_light_type camera or v2x` |
+| WARNING | 有的灯能识别，但某个相机灯从某些车道上识别不到。每个灯一条 | `traffic_light <id>: traffic light way <w> cannot be recognized from lanelet <ids> (<原因>); only the other light(s) of the regulatory element are used there` |
+| ERROR | 停止线不穿过这条车道的中心线（包括前后继），两端各延长 `stop_line_extend_length` 后也不穿过 | `traffic_light <id> \| lanelet <id>: stop line <s> does not cross the lanelet (nor its predecessors / successors), even extended by 5 m: ...` |
+| WARNING | 停止线只有延长后才穿过车道 | `traffic_light <id> \| lanelet <id>: stop line <s> only crosses the lanelet once extended by 5 m (stop_line_extend_length) at (x, y)` |
+
+识别不到的原因：`faces away, facing error +x° (max 40°)`（反过来画就能识别时加上 `drawn right -> left, reverse its node order`）、`x m behind the stop line`、`only x m ahead of the stop line (min 1 m)`。
+
+**与其他车道的关系**：
+
+| 级别 | 输出条件 | 输出信息 |
+|---|---|---|
+| ERROR | 一个灯（`refers` 中的 way）被多个 traffic_light 规则元素引用 | `traffic light way <w> is referenced by traffic_light <a>, <b>: the camera matching keeps a single (light, regulatory element) pair per light, ...` |
+| WARNING | 延长后的停止线穿过附近另一条车辆 lanelet 的中心线，交点处方向与使用这个红绿灯的车道相差 < `same_direction_angle`。那条 lanelet 不是使用它的车道或其前后继，也没有引用与它共用灯的规则元素 | `traffic_light <a> (lanelet <ids>): stop line <s> crosses lanelet <o> (same direction, once extended by 5 m) at (x, y), which uses traffic_light <b>: ...`；那条 lanelet 没有红绿灯时为 `which uses no traffic light: ...`；不延长也穿过时为 `the stop line itself` |
+
+**结构与标签**：
+
+| 级别 | 输出条件 | 输出信息 |
+|---|---|---|
+| ERROR | 没有 `refers`；`refers` 的 way 不存在、缺少节点或少于 2 个点 | `no traffic light (refers)` / `traffic light way <w> missing from the map` / `traffic light way <w> with missing nodes or fewer than 2 points` |
+| WARNING | `refers` 的 way 不是 `type=traffic_light` | `refers way <w> has type=..., not traffic_light` |
+| ERROR | 没有 `ref_line`；第一个 `ref_line` 的 way 不存在或无效 | `no stop line (ref_line): ...` / `stop line way <s> is missing from the map or invalid` |
+| WARNING | 多个 `ref_line`（只用第一个）；`ref_line` 的 way 不是 `type=stop_line` | `2 ref_line, only the first one (way <s>) is used as stop line` / `ref_line way <s> has type=..., not stop_line` |
+| WARNING | 没有被任何 lanelet 引用 | `not referenced by any lanelet, no traffic_light module is ever created for it` |
+| WARNING | 灯没有 `traffic_light_type`，或不是 `camera` / `v2x` | `traffic light way <w> has no traffic_light_type: ...` / `traffic light way <w> has traffic_light_type=..., used neither by the camera matching (camera) nor by the V2X handler (v2x)` |
+| WARNING | 相机灯没有有效的 `height`（不是正数） | `camera traffic light way <w> has no valid height tag, the camera matching projects a box of height 0` |
+| WARNING | 灯高不在 `min_height` ~ `max_height` 内 | `traffic light way <w> is 0.72 m above the stop line (expected 0.5 ~ 5 m), ...` |
+
+**灯泡**（`check_light_bulbs: true` 时；当前为 `false`，不检查）：
+
+| 级别 | 输出条件 | 输出信息 |
+|---|---|---|
+| WARNING | 灯泡（`light_bulbs` 的节点）离最近的灯框超过 `bulb_max_offset`。灯框为灯 linestring 往上 `height` 米 | `light_bulbs way <b> is up to 2.81 m from traffic light way <w> (max 1 m): bulbs z ... ~ ..., light z ... ~ ...` |
+| ERROR | `light_bulbs` 的 way 不存在或缺少节点 | `light_bulbs way <b> is missing from the map or has missing nodes` |
+
+- 结构与标签、灯泡两张表中的信息前面都有 `traffic_light <id>: `。问题的 id 为规则元素和涉及的 lanelet，忽略列表中写其中任何一个即可。
+- `only_check_AOI: true` 时只检查有车辆 lanelet 完全位于 AOI 内的红绿灯。
+- 与检查 3 中的红绿灯项目（light_bulb、`height`）相互独立：检查 3 由 Autoware 的验证工具报告。
 
 ## 扩展检查 `_template`（示例）
 

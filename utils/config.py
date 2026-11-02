@@ -12,6 +12,7 @@ DEFAULT_CONFIG = {
     "input": "lanelet2_map.osm",
     "log": {"enabled": False, "dir": "logs"},
     "heatmap": {"enabled": False, "radius": 30.0, "top": 10},
+    "masque": {"enabled": False, "subtype": "mapchecker_hotspot", "slow_down_speed": 15, "height": 0.2, "margin": 3.0},
     "turn_angle": 30.0,
     "turn_window": 30.0,
     "min_overlap_area": 1.0,
@@ -41,6 +42,7 @@ def load_config(path, base_dir=BASE_DIR):
     cfg = {**DEFAULT_CONFIG, **user}
     cfg["log"] = {**DEFAULT_CONFIG["log"], **(user.get("log") or {})}
     cfg["heatmap"] = {**DEFAULT_CONFIG["heatmap"], **(user.get("heatmap") or {})}
+    cfg["masque"] = {**DEFAULT_CONFIG["masque"], **(user.get("masque") or {})}
 
     cfg["input"] = resolve(cfg["input"], base_dir)
     cfg["log"]["dir"] = resolve(cfg["log"]["dir"], base_dir)

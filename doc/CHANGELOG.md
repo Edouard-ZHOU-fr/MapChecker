@@ -8,6 +8,7 @@
 
 ### 新增
 
+- **减速 masque**（`masque.enabled`，默认 false，命令行 `--[no-]masque`）：热力图开启时，把 Hotspots 中的每个区域写成一块 `detection_area`（包含问题点的最小矩形，四周加宽 `margin`），输出到日志目录的 `<日志名>_masque.osm`，格式与 `masque_lanelet2.osm` 相同（`subtype`、`area=yes`、`height`、`slow_down_speed`，节点带 lat/lon、`local_x` / `local_y`、`ele`）。见 [README](README.zh.md#减速-masque-masque)。
 - **`map_min_p`**（默认 0，命令行 `--map-min-p`）：`Using_LR` 时，p 低于它的有分数告警不在热力图上显示（点、着色、区域和弹出窗口），报告和日志中仍然列出；Hotspots 和图的标题中注明隐藏的条数。
 - **扩展 `border_sharing`**：检查并排的车辆 lanelet 是否共用中间的边界线。面对面的两条边界位置重合（相距 ≤ `max_distance`，沿较短边界的 ≥ `min_fraction`）但是不同的 way 时报 WARNING，并给出两条车道之间是缝隙还是重叠：同向时路由图不认为相邻、不能换道，对向时应共用一条中心线。对向车道各画一条中心线、互相重叠，正是检查 2 中一部分 "crossing overlap without right_of_way" 的根源（如 cern 5353/9684）。见 [ext/border_sharing/README.md](../ext/border_sharing/README.md)。
 - **热力图窗口中按图例逐个跳转**：单击图例中的一项（某个检查项、`ERROR` 或 `hotspot`），视角移到该类的下一个问题并显示其信息；再单击跳到下一个，循环；工具栏的后退按钮回到上一个视角。

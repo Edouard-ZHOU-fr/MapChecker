@@ -153,6 +153,92 @@ class ExtensionTest(unittest.TestCase):
                 self.assertEqual(out.count["stopline"], 1, text)
                 self.assertEqual(out.suppressed[("stopline", ignored)], 1)
 
+    def write_traffic_light_map(self, regs, lanelet_regs):
+        """
+        Two lanes along +x side by side: 22 (3.5 <= y <= 7) and 21 (0 <= y <= 3.5). Stop lines at x = 40 (51 on lane 22,
+        52 on lane 21, 53 across both, 54 at x = 48 on lane 22), lights at x = 46 (6 m ahead), 3 m high with height
+        0.5: 41 left of lane 22 drawn left -> right as seen by the vehicle, 42 right of lane 21 drawn right -> left
+        (faces away); bulbs 43 inside light 41, bulbs 44 of light 42 on the ground.
+        regs: {regulatory element id: {role: [way ids]}}; lanelet_regs: {lanelet id: [regulatory element ids]}
+        """
+        path = os.path.join(self.tmp, "trafficlight.osm")
+        points = {1: (0, 7), 2: (50, 7), 3: (0, 3.5), 4: (50, 3.5), 5: (0, 0), 6: (50, 0),
+                  31: (40, 7), 32: (40, 3.5), 33: (40, 3.5), 34: (40, 0), 35: (48, 7), 36: (48, 3.5),
+                  71: (46, 8.5, 3), 72: (46, 7.5, 3), 73: (46, -1.5, 3), 74: (46, -0.5, 3),
+                  75: (46, 8.3, 3.2), 76: (46, 8.0, 3.2), 77: (46, 7.7, 3.2),
+                  78: (46, -1.3, 0), 79: (46, -1.0, 0), 80: (46, -0.7, 0)}
+        typed = {51: ((31, 32), "stop_line", {}), 52: ((33, 34), "stop_line", {}), 53: ((31, 34), "stop_line", {}),
+                 54: ((35, 36), "stop_line", {}),
+                 41: ((71, 72), "traffic_light", {"height": 0.5, "traffic_light_type": "camera"}),
+                 42: ((73, 74), "traffic_light", {"height": 0.5, "traffic_light_type": "camera"}),
+                 43: ((75, 76, 77), "light_bulbs", {}), 44: ((78, 79, 80), "light_bulbs", {})}
+        extra = [f'<way id="{wid}">' + "".join(f'<nd ref="{r}"/>' for r in refs) + f'<tag k="type" v="{kind}"/>'
+                 + "".join(f'<tag k="{k}" v="{v}"/>' for k, v in tags.items()) + "</way>"
+                 for wid, (refs, kind, tags) in typed.items()]
+        for rid, roles in regs.items():
+            extra.append(f'<relation id="{rid}">'
+                         + "".join(f'<member type="way" role="{role}" ref="{w}"/>' for role, ws in roles.items() for w in ws)
+                         + '<tag k="type" v="regulatory_element"/><tag k="subtype" v="traffic_light"/></relation>')
+        lanelets = {22: (11, 12, "road", {}, lanelet_regs.get(22, [])), 21: (12, 13, "road", {}, lanelet_regs.get(21, []))}
+        write_osm(path, points, {11: (1, 2), 12: (3, 4), 13: (5, 6)}, lanelets, extra)
+        return path
+
+    def test_trafficlight(self):
+        """trafficlight: a light drawn right -> left is never recognized (ERROR when it is the only one of the lane);
+        stop lines of adjacent lanes using other traffic lights cross each other once extended; bulbs far from their
+        light; merging both lanes into one regulatory element with one stop line removes the cross-lane warnings"""
+        params = {**extmod.load(extmod.discover()["trafficlight"]).module.DEFAULT_CONFIG, "ignore": []}
+        ext = extmod.load(extmod.discover()["trafficlight"], params)
+
+        # one regulatory element per lane, light 42 of lane 21 faces away
+        path = self.write_traffic_light_map(
+            {61: {"refers": [41], "light_bulbs": [43], "ref_line": [51]},
+             62: {"refers": [42], "light_bulbs": [44], "ref_line": [52]}}, {22: [61], 21: [62]})
+        out, text = run_extensions([ext], path)
+        self.assertEqual((out.count["trafficlight"], out.errors["trafficlight"]), (3, 1), text)
+        self.assertRegex(text, r"\[ERROR\] traffic_light 62 \| lanelet 21: no light can be recognized from the lanelet "
+                               r"\(light 42: faces away, facing error [+-]180° \(max 40°\); drawn right -> left, reverse "
+                               r"its node order\)")
+        self.assertIn("traffic_light 61 (lanelet 22): stop line 51 crosses lanelet 21 (same direction, once extended "
+                      "by 5 m) at (40.0, 1.8), which uses traffic_light 62", text)
+        self.assertIn("traffic_light 62 (lanelet 21): stop line 52 crosses lanelet 22 (same direction, once extended "
+                      "by 5 m) at (40.0, 5.2), which uses traffic_light 61", text)
+        self.assertIn("traffic_light 62: light_bulbs way 44 is up to 3.00 m from traffic light way 42 (max 1 m): "
+                      "bulbs z 0.00 ~ 0.00, light z 3.00 ~ 3.50", text)
+
+        # check_light_bulbs: false, the bulbs warning is gone
+        no_bulbs = extmod.load(extmod.discover()["trafficlight"], {**params, "check_light_bulbs": False})
+        out, text = run_extensions([no_bulbs], path)
+        self.assertEqual((out.count["trafficlight"], out.errors["trafficlight"]), (2, 1), text)
+        self.assertNotIn("light_bulbs", text)
+
+        # ignored by the regulatory element id: only the warning of 61 about lane 21 is left
+        out, text = run_extensions([ext], path, ignore={"trafficlight": {"62": ""}})
+        self.assertEqual((out.count["trafficlight"], out.errors["trafficlight"]), (1, 0), text)
+
+        # both lanes use one regulatory element with both lights and one stop line across them
+        path = self.write_traffic_light_map(
+            {63: {"refers": [41, 42], "light_bulbs": [43], "ref_line": [53]}}, {22: [63], 21: [63]})
+        out, text = run_extensions([ext], path)
+        self.assertEqual((out.count["trafficlight"], out.errors["trafficlight"]), (1, 0), text)
+        self.assertIn("traffic_light 63: traffic light way 42 cannot be recognized from lanelet 21, 22 (faces away", text)
+        self.assertNotIn("crosses lanelet", text)
+
+        # light behind the stop line; a light shared by two regulatory elements; no stop line; not referenced
+        path = self.write_traffic_light_map(
+            {64: {"refers": [41], "ref_line": [54]}, 65: {"refers": [41]}}, {22: [64]})
+        out, text = run_extensions([ext], path)
+        self.assertIn("[ERROR] traffic_light 64 | lanelet 22: no light can be recognized from the lanelet (light 41: "
+                      "2.0 m behind the stop line)", text)
+        self.assertIn("[ERROR] traffic light way 41 is referenced by traffic_light 64, 65", text)
+        self.assertIn("[ERROR] traffic_light 65: no stop line (ref_line)", text)
+        self.assertIn("[WARNING] traffic_light 65: not referenced by any lanelet", text)
+
+        with self.assertRaisesRegex(ValueError, "max_facing_angle"):
+            extmod.load(extmod.discover()["trafficlight"], {**params, "max_facing_angle": 200})
+        with self.assertRaisesRegex(ValueError, "check_light_bulbs"):
+            extmod.load(extmod.discover()["trafficlight"], {**params, "check_light_bulbs": "no"})
+
     def test_border_sharing(self):
         """border_sharing: side-by-side lanelets whose facing boundaries coincide but are different ways (same
         direction with a gap, opposite directions with an overlap) are reported, a shared boundary is not"""

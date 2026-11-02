@@ -26,6 +26,17 @@ heatmap:
   radius: 30.0       # area radius (m): issues at most radius apart count as the same area, the heatmap spread is about radius
   top: 10            # maximum number of areas to label (an area needs at least 2 issues)
 
+# Slow-down masque generated from the Hotspots above (requires heatmap.enabled)
+masque:
+  enabled: false     # true: also write map_check_YYYYmmdd_HHMMSS_masque.osm in the log directory, a separate OSM file in
+                     #   the same format as the masque_lanelet2.osm of the map repositories: one area per hotspot
+                     #   (4 nodes + a way with type=detection_area, area=yes), the smallest rectangle containing the
+                     #   issues of the hotspot enlarged by margin; lat/lon, local_x/y and ele of the nodes come from the map
+  subtype: mapchecker_hotspot   # subtype of the areas (reason of the slow-down)
+  slow_down_speed: 15           # slow_down_speed tag of the areas (km/h)
+  height: 0.2                   # height tag of the areas
+  margin: 3.0                   # distance (m) added around the issues of a hotspot on each side
+
 # Check thresholds
 turn_angle: 30.0         # minimum heading change to count as a curve (degrees)
 turn_window: 30.0        # maximum arc length window for computing the heading change (m)

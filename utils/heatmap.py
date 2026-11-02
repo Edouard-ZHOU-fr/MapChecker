@@ -116,7 +116,8 @@ def report_hotspots(lanelets, aois, out, path, radius, top, map_name, show=False
     show:  also create a window in pyplot, popped up later by show_windows()
     min_p: with a model, scored WARNINGs with p < min_p are not shown on the map (points, coloring, hotspots, window);
            the report still lists them
-    With a model (Using_LR), weighted by p, see the beginning of this module
+    With a model (Using_LR), weighted by p, see the beginning of this module.
+    Returns the issue coordinates of each hotspot ([N, 2] each, in rank order), used for the masque (utils/masque.py)
     """
     weighted = out.model is not None
     unit = "p-weighted issues" if weighted else "issues"
@@ -132,7 +133,7 @@ def report_hotspots(lanelets, aois, out, path, radius, top, map_name, show=False
             out.info(f"{hidden} scored warnings with p < {min_p:.2f} not shown on the map (map_min_p)")
     if not len(pts):
         out.info("No issue located on the map, heatmap not generated")
-        return
+        return []
 
     core = np.array([item[0] in MARKERS for item in items], dtype=bool)  # Check 1~3 issues; extension checks not in hotspots
     core_idx = np.nonzero(core)[0]
@@ -154,6 +155,7 @@ def report_hotspots(lanelets, aois, out, path, radius, top, map_name, show=False
 
     _save_image(path, lanelets, aois, pts, items, weights, core, weighted, spots, radius, map_name, show, note)
     out.info(f"Heatmap: {path}")
+    return [pts[members] for members in spots]
 
 
 def show_windows():

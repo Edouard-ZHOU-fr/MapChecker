@@ -58,6 +58,7 @@ Les options de ligne de commande sont prioritaires sur le fichier de configurati
 | `--map-min-p P` | `map_min_p` |
 | `--[no-]heatmap` | `heatmap.enabled` |
 | `--[no-]show-heatmap` | `isShow` |
+| `--[no-]masque` | `masque.enabled` |
 | `--no-color` | Sortie sans couleurs |
 | `--ext NAME[,NAME...]` | Exécute ces extensions, à la place de celles qui ont `enable: true` dans leur configuration |
 | `--only-ext NAME[,NAME...]` | N'exécute que ces extensions, sans les vérifications 1 à 3 |
@@ -78,6 +79,11 @@ Les chemins relatifs sont relatifs à `MapChecker/`.
 | `heatmap.enabled` | `false` | `true` : liste en fin de rapport les zones à forte concentration de problèmes et génère dans `log.dir` une carte de chaleur du même nom `map_check_YYYYmmdd_HHMMSS.png` ; nécessite matplotlib |
 | `heatmap.radius` | `30.0` | Rayon des zones (m) : les problèmes distants d'au plus `radius` appartiennent à la même zone ; la diffusion de la carte de chaleur est d'environ `radius` |
 | `heatmap.top` | `10` | Nombre maximal de zones annotées (une zone doit compter au moins 2 problèmes) |
+| `masque.enabled` | `false` | `true` : génère aussi le masque de ralentissement des zones `map_check_YYYYmmdd_HHMMSS_masque.osm` dans `log.dir`, voir [Masque de ralentissement](#masque-de-ralentissement-masque) ; nécessite `heatmap.enabled` |
+| `masque.subtype` | `mapchecker_hotspot` | `subtype` des zones du masque (raison du ralentissement) |
+| `masque.slow_down_speed` | `15` | Tag `slow_down_speed` des zones du masque (km/h) |
+| `masque.height` | `0.2` | Tag `height` des zones du masque |
+| `masque.margin` | `3.0` | Distance (m) ajoutée de chaque côté autour des problèmes d'une zone |
 | `turn_angle` | `30.0` | Variation de cap minimale pour qu'il y ait virage (degrés) |
 | `turn_window` | `30.0` | Fenêtre maximale de longueur d'arc pour calculer la variation de cap (m) ; une courbe douce sur une longue lanelet ne compte pas comme virage |
 | `min_overlap_area` | `1.0` | Surface minimale pour que deux lanelets se chevauchent (m²) |
@@ -148,6 +154,21 @@ Heatmap: .../logs/map_check_20261016_093357.png
   - Clic ailleurs : affiche le numéro de la lanelet à l'endroit cliqué (plusieurs possibles en cas de chevauchement) ; un clic dans le vide masque l'info.
   - Le clic fonctionne aussi en mode zoom / déplacement ; un glisser ne compte pas comme un clic.
 - **Étendue** : avec `only_check_AOI: true`, seule l'étendue des AOI est dessinée (bordure des AOI en pointillés), sinon toute la carte. Les points de problème ont une forme selon la vérification : cercle turn_direction, carré right_of_way, triangle autoware. Les problèmes des extensions (`ext/`) sont marqués par des points verts (une forme par extension) ; ils n'interviennent ni dans la coloration ni dans la détermination des zones, et leur nombre est indiqué à part dans les Hotspots. Les ERROR de toutes les vérifications (extensions comprises) sont marquées par des points rouges, dessinés au-dessus des autres points.
+
+## Masque de ralentissement (`masque`)
+
+Avec `masque.enabled: true` (ou `--masque`) et la carte de chaleur activée, les zones des Hotspots sont aussi écrites dans un fichier OSM séparé `map_check_YYYYmmdd_HHMMSS_masque.osm` du répertoire des logs, au même format que les `masque_lanelet2.osm` édités à la main dans VMB, pour que le véhicule ralentisse là où la carte a le plus de problèmes :
+
+```
+Masque: .../logs/map_check_20261027_115711_masque.osm (10 detection_area, subtype=mapchecker_hotspot, slow_down_speed=15, margin 3 m)
+  way 5: hotspot #1, 58.4 x 26.2 m, center (31471.6, 9692.2)
+  way 10: hotspot #2, 12.3 x 11.7 m, center (30962.8, 11223.4)
+```
+
+- **Une zone par hotspot**, dans l'ordre des Hotspots (même numérotation que le log et l'image) : le plus petit rectangle (orientation quelconque) qui contient les problèmes de la zone, agrandi de `masque.margin` mètres de chaque côté. Les mêmes problèmes que pour les zones sont pris en compte (`map_min_p`, pondération par p, sans les extensions).
+- **Format** : 4 nœuds + un way `type=detection_area`, `subtype=<masque.subtype>`, `area=yes`, `height`, `slow_down_speed` ; la zone k utilise les nœuds 5k+1 à 5k+4 et le way 5k+5, comme les fichiers masque.
+- **Coordonnées** : `local_x` / `local_y` du rectangle ; `lat` / `lon` par un ajustement affine local sur les 16 nœuds de la carte les plus proches (écart < 1 mm avec la projection MGRS, sans bibliothèque de projection) ; `ele` celle du nœud de bordure de lanelet véhicule le plus proche.
+- Le fichier est à relire avant usage (par exemple dans VMB / JOSM) : ajuster les zones, le `subtype` et la vitesse au cas par cas, puis le copier dans le dépôt de la carte.
 
 ## Notation des alertes (`Using_LR`)
 

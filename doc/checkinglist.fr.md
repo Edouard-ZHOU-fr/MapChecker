@@ -2,7 +2,7 @@
 
 [中文](checkinglist.md) | Français
 
-Ce document liste tout ce que `check_lanelet_map.py` vérifie actuellement, et les conditions dans lesquelles chaque WARNING / ERROR est émis. Il est établi d'après le code au 2026-10-21 ; les « valeurs actuelles » citées proviennent de `config/config.yaml` et de `ext/<nom>/config/config.yaml`. Après modification de la configuration, c'est le fichier de configuration qui fait foi.
+Ce document liste tout ce que `check_lanelet_map.py` vérifie actuellement, et les conditions dans lesquelles chaque WARNING / ERROR est émis. Il est établi d'après le code au 2026-10-30 ; les « valeurs actuelles » citées proviennent de `config/config.yaml` et de `ext/<nom>/config/config.yaml`. Après modification de la configuration, c'est le fichier de configuration qui fait foi.
 
 ## Vue d'ensemble
 
@@ -11,15 +11,16 @@ Ce document liste tout ce que `check_lanelet_map.py` vérifie actuellement, et l
 | 1 | `turn_direction` | Lanelets véhicule | Toujours (sauf avec `--only-ext`) | WARNING |
 | 2 | `right_of_way` | Paires de lanelets véhicule qui se chevauchent, éléments de régulation `right_of_way` | Toujours (sauf avec `--only-ext`) | WARNING / ERROR |
 | 3 | `autoware` | Tout le fichier de carte | `autoware_checking: true` (actuellement `false`), nécessite de sourcer ROS | WARNING / ERROR |
-| Extension | `altitude` | Altitude `ele` des nœuds des bordures des lanelets véhicule | `enable: true` (actuellement activée) | WARNING |
+| Extension | `altitude` | Altitude `ele` des nœuds des bordures des lanelets véhicule | `enable: true` (actuellement désactivée) | WARNING |
 | Extension | `crosswalk` | Lanelets `subtype=crosswalk` | `enable: true` (actuellement activée) | WARNING |
 | Extension | `stopline` | Ways `type=stop_line` | `enable: true` (actuellement activée) | WARNING / ERROR |
-| Extension | `border_sharing` | Paires de lanelets véhicule côte à côte | `enable: true` (actuellement activée) | WARNING |
+| Extension | `border_sharing` | Paires de lanelets véhicule côte à côte | `enable: true` (actuellement désactivée) | WARNING |
+| Extension | `trafficlight` | Éléments de régulation `subtype=traffic_light` | `enable: true` (actuellement activée) | WARNING / ERROR |
 | Extension | `_template` | Tags des lanelets véhicule | Jamais automatiquement, seulement avec `--ext _template` | WARNING |
 
 ## Règles générales
 
-- **Lanelet véhicule** : lanelet dont le `subtype` est `road`, `highway` ou `road_shoulder`. Les vérifications 1, 2 et altitude ne portent que sur les lanelets véhicule.
+- **Lanelet véhicule** : lanelet dont le `subtype` est `road`, `highway` ou `road_shoulder`. Les vérifications 1, 2, altitude et border_sharing ne portent que sur les lanelets véhicule ; trafficlight ne vérifie que l'usage des feux par les lanelets véhicule.
 - **Niveau** : `[WARNING]` demande une confirmation manuelle ; `[ERROR]` est une erreur certaine.
 - **Code de sortie** : `0` aucun problème ; `1` au moins un WARNING / ERROR non ignoré ; `2` erreur d'option, de configuration ou d'environnement.
 - **Liste d'ignorés** (`config/ignore.yaml`, ainsi que `ignore` dans la configuration de chaque extension) :
@@ -32,8 +33,8 @@ Ce document liste tout ce que `check_lanelet_map.py` vérifie actuellement, et l
   - Si la carte ne contient aucune AOI, aucune vérification n'est effectuée et le programme se termine (code de sortie `0`).
 - **Simples informations, non comptées comme problèmes** :
   - Lanelets impossibles à analyser (bordure gauche / droite manquante, way de bordure inexistant, référence à un nœud inexistant) : listées au début du rapport dans `Lanelets not loaded (incomplete, not checked)`, elles ne participent à aucune vérification.
-  - Passages piétons qui ne chevauchent aucune voie : seuls leurs id sont listés.
-  - Le score `p` de `Using_LR`, les Hotspots et la carte de chaleur : ils ne font que noter, trier et compter les problèmes déjà affichés, sans en ajouter ni en masquer aucun.
+  - Passages piétons qui ne chevauchent aucune voie, lignes d'arrêt et ways `traffic_light` référencés par aucun élément de régulation, feux référencés uniquement par des lanelets non véhicule (par exemple les feux piétons des passages piétons) : seuls leurs id sont listés.
+  - Le score `p` de `Using_LR`, les Hotspots, la carte de chaleur et le masque de ralentissement (`masque.enabled: true`, actuellement `false`) : ils ne font que noter, trier et compter les problèmes déjà affichés, sans en ajouter ni en masquer aucun dans le rapport. `map_min_p` (actuellement 0.5) ne décide que des problèmes dessinés sur la carte de chaleur ; le rapport et le log les listent toujours tous.
 
 ## Notions de base (communes aux vérifications 1 et 2)
 
@@ -41,7 +42,7 @@ Ce document liste tout ce que `check_lanelet_map.py` vérifie actuellement, et l
 |---|---|
 | Virage | Sur un tronçon quelconque de longueur au plus `turn_window` (actuellement 30 m), la variation de cap de la ligne centrale (moyenne des bordures gauche et droite) est ≥ `turn_angle` (actuellement 30°). Le cap est d'abord lissé par une moyenne glissante d'environ 2 m, pour éliminer le bruit des angles aux nœuds ; pour une lanelet plus courte que `turn_window`, c'est l'angle sur toute sa longueur. Positif à gauche, négatif à droite |
 | Ligne droite | Tout ce qui n'est pas un virage |
-| Chevauchement | La surface de chevauchement de deux lanelets véhicule est ≥ `min_overlap_area` (actuellement 1.0 m², estimée par échantillonnage sur une grille de 0.5 m). Deux lanelets toutes deux droites, ou de sens opposés (écart de cap > 150° au chevauchement), qui se chevauchent sur une longueur ≥ `parallel_min_length` (actuellement 10 m) et dont les lignes centrales restent à ≥ `parallel_min_gap` (actuellement 1.5 m) l'une de l'autre le long du chevauchement sont des voies parallèles (par exemple sur une route étroite ou qui se rétrécit) et ne comptent pas comme chevauchement. Deux lanelets qui se suivent (l'une est le prédécesseur / successeur de l'autre) ou qui sont adjacentes (way de bordure partagé) ne comptent pas comme chevauchement |
+| Chevauchement | La surface de chevauchement de deux lanelets véhicule est ≥ `min_overlap_area` (actuellement 1.0 m², estimée par échantillonnage sur une grille de 0.5 m). Deux lanelets toutes deux droites, ou de sens opposés (écart de cap > 150° au chevauchement), qui se chevauchent sur une longueur ≥ `parallel_min_length` (actuellement 30 m) et dont les lignes centrales restent à ≥ `parallel_min_gap` (actuellement 1.8 m) l'une de l'autre le long du chevauchement sont des voies parallèles (par exemple sur une route étroite ou qui se rétrécit) et ne comptent pas comme chevauchement. Deux lanelets qui se suivent (l'une est le prédécesseur / successeur de l'autre) ou qui sont adjacentes (way de bordure partagé) ne comptent pas comme chevauchement |
 | Divergence (diverge) | Les deux lanelets qui se chevauchent ont un prédécesseur commun, ou le même point de départ |
 | Convergence (merge) | Les deux lanelets qui se chevauchent ont un successeur commun, ou le même point d'arrivée |
 | Croisement (crossing) | Chevauchement qui n'est ni une divergence ni une convergence |
@@ -144,6 +145,90 @@ Objet vérifié : lanelets `subtype=crosswalk`. Valeur actuelle : `max_extension
 | Dépassement excessif de la route | Une extrémité du passage piéton dépasse de la route de plus de `max_extension`. La route est l'union de toutes les lanelets véhicule qui chevauchent le passage piéton ; la mesure se fait dans le sens du passage piéton, avec une ligne tous les 0.1 m dans la largeur et un échantillon tous les 0.01 m le long de chaque ligne ; pour chaque extrémité, on retient le maximum sur toutes les lignes | `[WARNING] crosswalk <id>: extends up to 2.10 m beyond the road (max 0.50 m) \| ...` |
 | Pas de dépassement excessif | ≤ `max_extension` ; une extrémité qui tombe à l'intérieur de la route vaut 0 | Seule la valeur mesurée est affichée, ce n'est pas un problème |
 | Ne chevauche aucune voie | Ne chevauche aucune lanelet véhicule | Id seulement listé à la fin, non vérifié |
+
+## Extension `stopline`
+
+Objet vérifié : tous les ways `type=stop_line` de la carte, qu'ils soient référencés ou non par un élément de régulation. Cette vérification n'a pas de paramètre.
+
+| Niveau | Condition | Message |
+|---|---|---|
+| WARNING | Plus de 2 nœuds (polyligne). Le nœud intermédiaire le plus éloigné de la droite entre les deux extrémités est indiqué avec sa distance : une distance de 0 signifie qu'il s'agit seulement d'un nœud superflu sur la droite, à supprimer | `stop_line <id>: 3 points (polyline), should be a straight line of 2 points; node N is 1.00 m off the line between its ends (length 7.3 m) \| lanelet <id> at (x, y)` |
+| ERROR | Moins de 2 nœuds | `stop_line <id>: only 1 point(s), a stop line needs 2 \| ...` |
+| ERROR | Référence à des nœuds absents de la carte | `stop_line <id>: references node(s) ... missing from the map \| ...` |
+
+- `| lanelet ...` donne les lanelets qui référencent cette ligne d'arrêt via le `ref_line` d'un élément de régulation, ou `not referenced by any regulatory element` s'il n'y en a pas.
+- Dans la liste d'ignorés, on peut indiquer l'id du way de la ligne d'arrêt ou celui d'une lanelet qui la référence.
+- Avec `only_check_AOI: true`, seules les lignes d'arrêt entièrement situées dans une AOI sont vérifiées.
+
+## Extension `border_sharing`
+
+Objet vérifié : les bordures « face à face » de deux lanelets véhicule côte à côte. Dans le même sens, on compare la bordure droite de l'une à la bordure gauche de l'autre ; en sens opposés, les deux bordures gauches ou les deux bordures droites. Valeurs actuelles : `max_distance: 0.1` m, `min_fraction: 0.8`, `min_length: 2.0` m.
+
+Un point est pris tous les 0.5 m le long d'une bordure. Il compte comme confondu quand sa distance à l'autre bordure est ≤ `max_distance` et que les deux bordures sont parallèles (antiparallèles en sens opposés, à environ 25° près).
+
+| Cas | Critère | Sortie |
+|---|---|---|
+| Voies de même sens sans bordure partagée | Les deux bordures sont des ways différents, et la partie confondue est ≥ `min_length` et ≥ `min_fraction` de la longueur de la plus courte des deux bordures | `[WARNING] lanelet <a> left (way ..) / lanelet <b> right (way ..): boundaries coincide over 21.0 m (100% of the shorter) but are different ways, gap 0.26 m between the lanes; they are not adjacent in the routing graph, no lane change between them \| at (x, y)` |
+| Voies opposées sans ligne centrale partagée | Idem, les deux voies sont de sens opposés | `[WARNING] lanelet <a> left (way ..) / lanelet <b> left (way ..), opposite directions: boundaries coincide over ... but are different ways, ...; opposite lanes should share one center line \| at (x, y)` |
+| Déjà partagée | Les deux bordures sont le même way | Seulement comptée, non signalée |
+| Simplement proches par endroits | La partie confondue n'atteint pas la longueur / la proportion ci-dessus, par exemple des voies de virage qui se croisent dans une intersection | Non signalé |
+
+- La position relative des deux lignes est la médiane de la distance signée sur la partie confondue : `drawn on top of each other` (superposées), `gap x m between the lanes` (espace entre les voies), `overlap x m between the lanes` (voies qui se chevauchent).
+- Avec `only_check_AOI: true`, seules les paires dont les deux lanelets sont entièrement situées dans une AOI sont vérifiées.
+
+## Extension `trafficlight`
+
+Objet vérifié : éléments de régulation `subtype=traffic_light`, vérifiés selon l'usage qu'en font réellement le module traffic_light d'Autoware et la mise en correspondance caméra de milla (`milla_traffic_light_matching`). Les conséquences de chaque problème sont décrites dans [ext/trafficlight/README.md](../ext/trafficlight/README.md).
+
+Valeurs actuelles : `max_facing_angle: 40`°, `min_forward_distance: 1.0` m, `min_height: 0.5` / `max_height: 5.0` m, `stop_line_extend_length: 5.0` m, `same_direction_angle: 45`°, `check_light_bulbs: false` (`bulb_max_offset: 1.0` m).
+
+| Notion | Critère |
+|---|---|
+| Point d'arrêt, direction de la voie | Premier point d'intersection de la ligne centrale de la voie avec la ligne d'arrêt (premier `ref_line`), et direction de la ligne centrale en ce point. Sans intersection sur cette lanelet, on cherche sur ses successeurs, puis ses prédécesseurs |
+| Feu reconnaissable | Feu `traffic_light_type=camera` : sa direction (direction de la linestring + 90°, c'est-à-dire dessinée de gauche à droite vue depuis la ligne d'arrêt) diffère de celle de la voie d'au plus `max_facing_angle`, et le centre du boîtier est à ≥ `min_forward_distance` devant le point d'arrêt, le long de la voie. Un feu `v2x` est toujours considéré comme reconnaissable |
+| Hauteur du feu | Hauteur (m) du centre du boîtier (altitude de la linestring du feu + `height` / 2) au-dessus de la ligne d'arrêt (moyenne des `ele` de ses nœuds). Non vérifiée sans `ele` |
+
+**Reconnaissance et ligne d'arrêt** (vérifiées pour chaque lanelet véhicule qui utilise ce feu) :
+
+| Niveau | Condition | Message |
+|---|---|---|
+| ERROR | Aucun feu n'est reconnaissable depuis cette voie : les feux caméra sont tous mal orientés ou pas devant le point d'arrêt, et il n'y a pas de feu `v2x` | `traffic_light <id> \| lanelet <id>: no light can be recognized from the lanelet (light <w>: faces away, facing error +175° (max 40°); drawn right -> left, reverse its node order): ...` ; sans feu `camera` / `v2x`, la parenthèse contient `no light with traffic_light_type camera or v2x` |
+| WARNING | Certains feux sont reconnaissables, mais un feu caméra ne l'est pas depuis certaines voies. Une alerte par feu | `traffic_light <id>: traffic light way <w> cannot be recognized from lanelet <ids> (<raison>); only the other light(s) of the regulatory element are used there` |
+| ERROR | La ligne d'arrêt ne croise pas la ligne centrale de la voie (ni de ses prédécesseurs / successeurs), même prolongée de `stop_line_extend_length` à chaque extrémité | `traffic_light <id> \| lanelet <id>: stop line <s> does not cross the lanelet (nor its predecessors / successors), even extended by 5 m: ...` |
+| WARNING | La ligne d'arrêt ne croise la voie qu'une fois prolongée | `traffic_light <id> \| lanelet <id>: stop line <s> only crosses the lanelet once extended by 5 m (stop_line_extend_length) at (x, y)` |
+
+Raisons de non-reconnaissance : `faces away, facing error +x° (max 40°)` (suivi de `drawn right -> left, reverse its node order` quand le feu serait reconnu dessiné dans l'autre sens), `x m behind the stop line`, `only x m ahead of the stop line (min 1 m)`.
+
+**Relation avec les autres voies** :
+
+| Niveau | Condition | Message |
+|---|---|---|
+| ERROR | Un feu (way de `refers`) est référencé par plusieurs éléments de régulation traffic_light | `traffic light way <w> is referenced by traffic_light <a>, <b>: the camera matching keeps a single (light, regulatory element) pair per light, ...` |
+| WARNING | La ligne d'arrêt prolongée croise la ligne centrale d'une autre lanelet véhicule proche, dont la direction au point d'intersection diffère de moins de `same_direction_angle` de celle des voies qui utilisent ce feu. Cette lanelet n'est ni une voie qui l'utilise ni l'un de ses prédécesseurs / successeurs, et ne référence aucun élément de régulation partageant un feu avec lui | `traffic_light <a> (lanelet <ids>): stop line <s> crosses lanelet <o> (same direction, once extended by 5 m) at (x, y), which uses traffic_light <b>: ...` ; `which uses no traffic light: ...` si cette lanelet n'a pas de feu ; `the stop line itself` si elle la croise sans prolongement |
+
+**Structure et tags** :
+
+| Niveau | Condition | Message |
+|---|---|---|
+| ERROR | Pas de `refers` ; le way de `refers` n'existe pas, a des nœuds manquants ou moins de 2 points | `no traffic light (refers)` / `traffic light way <w> missing from the map` / `traffic light way <w> with missing nodes or fewer than 2 points` |
+| WARNING | Le way de `refers` n'est pas `type=traffic_light` | `refers way <w> has type=..., not traffic_light` |
+| ERROR | Pas de `ref_line` ; le way du premier `ref_line` n'existe pas ou est invalide | `no stop line (ref_line): ...` / `stop line way <s> is missing from the map or invalid` |
+| WARNING | Plusieurs `ref_line` (seul le premier est utilisé) ; le way de `ref_line` n'est pas `type=stop_line` | `2 ref_line, only the first one (way <s>) is used as stop line` / `ref_line way <s> has type=..., not stop_line` |
+| WARNING | Référencé par aucune lanelet | `not referenced by any lanelet, no traffic_light module is ever created for it` |
+| WARNING | Feu sans `traffic_light_type`, ou dont la valeur n'est ni `camera` ni `v2x` | `traffic light way <w> has no traffic_light_type: ...` / `traffic light way <w> has traffic_light_type=..., used neither by the camera matching (camera) nor by the V2X handler (v2x)` |
+| WARNING | Feu caméra sans `height` valide (pas un nombre positif) | `camera traffic light way <w> has no valid height tag, the camera matching projects a box of height 0` |
+| WARNING | Hauteur du feu hors de `min_height` ~ `max_height` | `traffic light way <w> is 0.72 m above the stop line (expected 0.5 ~ 5 m), ...` |
+
+**Ampoules** (avec `check_light_bulbs: true` ; actuellement `false`, non vérifiées) :
+
+| Niveau | Condition | Message |
+|---|---|---|
+| WARNING | Les ampoules (nœuds de `light_bulbs`) sont à plus de `bulb_max_offset` du boîtier de feu le plus proche. Le boîtier s'étend de la linestring du feu jusqu'à `height` m au-dessus | `light_bulbs way <b> is up to 2.81 m from traffic light way <w> (max 1 m): bulbs z ... ~ ..., light z ... ~ ...` |
+| ERROR | Le way de `light_bulbs` n'existe pas ou a des nœuds manquants | `light_bulbs way <b> is missing from the map or has missing nodes` |
+
+- Les messages des tableaux Structure et tags et Ampoules sont précédés de `traffic_light <id>: `. Les id d'un problème sont l'élément de régulation et les lanelets concernées ; il suffit d'indiquer l'un d'eux dans la liste d'ignorés.
+- Avec `only_check_AOI: true`, seuls les feux utilisés par une lanelet véhicule entièrement située dans une AOI sont vérifiés.
+- Indépendante des points sur les feux de la vérification 3 (light_bulb, `height`) : ceux-ci sont signalés par l'outil de validation d'Autoware.
 
 ## Extension `_template` (exemple)
 

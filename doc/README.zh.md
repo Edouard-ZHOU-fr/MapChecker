@@ -58,6 +58,7 @@ python3 check_lanelet_map.py --only-ext crosswalk     # 只运行扩展检查 cr
 | `--map-min-p P` | `map_min_p` |
 | `--[no-]heatmap` | `heatmap.enabled` |
 | `--[no-]show-heatmap` | `isShow` |
+| `--[no-]masque` | `masque.enabled` |
 | `--no-color` | 不输出颜色 |
 | `--ext NAME[,NAME...]` | 运行这些扩展检查，代替配置中 `enable: true` 的 |
 | `--only-ext NAME[,NAME...]` | 只运行这些扩展检查，跳过检查 1~3 |
@@ -78,6 +79,11 @@ python3 check_lanelet_map.py --only-ext crosswalk     # 只运行扩展检查 cr
 | `heatmap.enabled` | `false` | `true`：在报告末尾列出问题频发的区域，并在 `log.dir` 生成同名的热力图 `map_check_YYYYmmdd_HHMMSS.png`，需要 matplotlib |
 | `heatmap.radius` | `30.0` | 区域半径（米）：相距不超过 `radius` 的问题算同一区域，热力图的扩散范围约为 `radius` |
 | `heatmap.top` | `10` | 最多标注几个区域（至少有 2 条问题才算） |
+| `masque.enabled` | `false` | `true`：同时在 `log.dir` 中生成问题频发区域的减速 masque `map_check_YYYYmmdd_HHMMSS_masque.osm`，见[减速 masque](#减速-masque-masque)；需要 `heatmap.enabled` |
+| `masque.subtype` | `mapchecker_hotspot` | masque 区域的 `subtype`（减速原因） |
+| `masque.slow_down_speed` | `15` | masque 区域的 `slow_down_speed` 标签（km/h） |
+| `masque.height` | `0.2` | masque 区域的 `height` 标签 |
+| `masque.margin` | `3.0` | 在区域内问题点的四周各加宽的距离（米） |
 | `turn_angle` | `30.0` | 判定为弯道的最小航向变化（度） |
 | `turn_window` | `30.0` | 计算航向变化的最大弧长窗口（米），长 lanelet 上的缓弯不算弯道 |
 | `min_overlap_area` | `1.0` | 判定两条 lanelet 重叠的最小面积（m²） |
@@ -148,6 +154,21 @@ Heatmap: .../logs/map_check_20261016_093357.png
   - 单击其他位置：显示点击处的 lanelet 编号（重叠处可能有多条）；单击空白处隐藏。
   - 缩放 / 平移模式下也可以直接单击，拖动不算单击。
 - **范围**：`only_check_AOI: true` 时只画 AOI 的范围（虚线为 AOI 边界），否则画整张地图。问题点按检查项用不同形状标出：圆形 turn_direction、方形 right_of_way、三角形 autoware。扩展检查（`ext/`）的问题用绿色的点标出（每项扩展一种形状），不参与着色和区域的判定，Hotspots 中单独列出其条数。所有检查（包括扩展检查）的 ERROR 都用红色的点标出，画在其他点之上。
+
+## 减速 masque (`masque`)
+
+`masque.enabled: true`（或 `--masque`）且热力图开启时，Hotspots 中的区域同时写入日志目录中单独的 OSM 文件 `map_check_YYYYmmdd_HHMMSS_masque.osm`，格式与在 VMB 中手工编辑的 `masque_lanelet2.osm` 相同，让车辆在地图问题最集中的地方减速：
+
+```
+Masque: .../logs/map_check_20261027_115711_masque.osm (10 detection_area, subtype=mapchecker_hotspot, slow_down_speed=15, margin 3 m)
+  way 5: hotspot #1, 58.4 x 26.2 m, center (31471.6, 9692.2)
+  way 10: hotspot #2, 12.3 x 11.7 m, center (30962.8, 11223.4)
+```
+
+- **每个区域一块**，顺序同 Hotspots（与日志和图中的编号一致）：包含该区域所有问题点的最小矩形（任意方向），四周各加宽 `masque.margin` 米。参与的问题与区域判定相同（`map_min_p`、按 p 加权、不含扩展检查）。
+- **格式**：4 个节点 + 一个 way，`type=detection_area`、`subtype=<masque.subtype>`、`area=yes`、`height`、`slow_down_speed`；第 k 块用节点 5k+1 ~ 5k+4 和 way 5k+5，与 masque 文件相同。
+- **坐标**：`local_x` / `local_y` 为矩形的角点；`lat` / `lon` 用最近的 16 个地图节点做局部仿射拟合（与 MGRS 投影相差 < 1 mm，不需要投影库）；`ele` 取最近的车辆 lanelet 边界节点的高程。
+- 使用前请检查（如在 VMB / JOSM 中打开）：按实际情况调整区域、`subtype` 和速度，再复制到地图仓库。
 
 ## 告警打分 (`Using_LR`)
 
