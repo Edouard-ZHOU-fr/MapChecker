@@ -1,0 +1,14 @@
+# Configuration of the extension check crosswalk, see ext/crosswalk/README.md
+# The map (input), log and only_check_AOI use the settings in config/config.yaml;
+# the command line --set crosswalk.<param>=<value> takes precedence over the settings here
+
+enable: true         # true: check_lanelet_map.py runs this check (ignored when --ext / --only-ext is given)
+
+# Maximum meters each end of a crosswalk may extend beyond the road (all lanes overlapping it), measured along
+# the crosswalk direction;
+# WARNING if it extends further, for the other crosswalks only the measured value is printed
+max_extension: 0.5
+
+# Crosswalk ids ignored by this check, same syntax as config/ignore.yaml: [19942, 19991: reason]
+# (can also be written under crosswalk: in config/ignore.yaml; lanelets under all: are also ignored in this check)
+ignore: []

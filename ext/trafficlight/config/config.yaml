@@ -1,0 +1,28 @@
+# Configuration of the extension check trafficlight, see ext/trafficlight/README.md
+# The map (input), log and only_check_AOI use the settings in config/config.yaml;
+# the command line --set trafficlight.<param>=<value> takes precedence over the settings here
+
+enable: true         # true: check_lanelet_map.py runs this check (ignored when --ext / --only-ext is given)
+
+# Recognition of camera lights (milla_traffic_light_matching)
+max_facing_angle: 40.0       # max angle (deg) between the light and the lane, max_angle_range_deg of the matching;
+                             #   a light is drawn left -> right as seen from the stop line
+min_forward_distance: 1.0    # min distance (m) of the light ahead of the stop line along the lane, closer or behind
+                             #   it is not seen by the stopped vehicle
+min_height: 0.5              # range (m) of the light center height above the stop line
+max_height: 5.0
+
+# Light bulbs (light_bulbs of the regulatory element)
+check_light_bulbs: false      # false: the light_bulbs ways are not checked
+bulb_max_offset: 1.0         # light bulbs farther than this (m) from their traffic light box are reported
+
+# Stop line of other lanes (Autoware behavior_velocity_planner)
+stop_line_extend_length: 5.0 # the traffic_light module extends the stop line by this length (m) at both ends,
+                             #   same value as stop_line_extend_length in behavior_velocity_planner.param.yaml
+same_direction_angle: 45.0   # other lanelets crossed by the extended stop line are reported when their direction
+                             #   differs by less than this (deg) from the lanelets using the traffic light
+
+# Ids ignored by this check, same syntax as config/ignore.yaml: [39264, 33868: reason]; either the regulatory element
+# or a lanelet concerned (can also be written under trafficlight: in config/ignore.yaml; lanelets under all: are also
+# ignored in this check)
+ignore: []

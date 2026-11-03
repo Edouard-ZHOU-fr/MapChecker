@@ -2,3 +2,4 @@ logs/
 **.osm
 __pycache__/
 data/
+libs/

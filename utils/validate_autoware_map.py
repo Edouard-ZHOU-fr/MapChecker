@@ -1,24 +1,25 @@
 #!/usr/bin/env python3
 """
-Autoware Lanelet2 地图检查 (autoware_lanelet2_validation 的 Python 版)
+Autoware Lanelet2 map check (Python version of autoware_lanelet2_validation)
 
-移植自 autoware_lanelet2_extension/src/validation.cpp，检查项和判定条件与其一致:
-  1. elevation:      每个 <node> 都有 ele 标签
-  2. traffic_light:  lanelet 引用的 AutowareTrafficLight 有 light_bulbs，light_bulb 有 traffic_light_id，
-                     traffic_light 为 linestring 且有 height 标签
-  3. turn_direction: 车辆可通行、且在路由图中与其他 lanelet / area 冲突的 lanelet 必须有 turn_direction
-另外补充 validation.cpp 没做、但 lanelet2_map_loader 会做的检查:
-  0. load:           Lanelet2 解析错误 (validation.cpp 收集后直接丢弃) 和 MetaInfo format_version
+Ported from autoware_lanelet2_extension/src/validation.cpp, with the same checks and criteria:
+  1. elevation:      every <node> has an ele tag
+  2. traffic_light:  the AutowareTrafficLight referenced by a lanelet has light_bulbs, light_bulb has traffic_light_id,
+                     traffic_light is a linestring and has a height tag
+  3. turn_direction: lanelets passable by vehicles that conflict with other lanelets / areas in the routing graph
+                     must have turn_direction
+Additionally, a check that validation.cpp does not do but lanelet2_map_loader does:
+  0. load:           Lanelet2 parse errors (collected then discarded by validation.cpp) and MetaInfo format_version
 
-与 validation.cpp 一样用 MGRSProjector 投影，用 Germany / Vehicle 交规建路由图。
-发现问题时返回 1 (validation.cpp 总是返回 0)，可用于 CI。
-check_lanelet_map.py 在 autoware_checking 为 true 时调用 validate()，把结果合并到它的报告中。
+Like validation.cpp, projects with MGRSProjector and builds the routing graph with Germany / Vehicle traffic rules.
+Returns 1 when issues are found (validation.cpp always returns 0), usable in CI.
+check_lanelet_map.py calls validate() when autoware_checking is true and merges the result into its report.
 
-与 check_lanelet_map.py 不同，本脚本依赖 ROS 环境中的 lanelet2 和 autoware_lanelet2_extension_python:
+Unlike check_lanelet_map.py, this script depends on lanelet2 and autoware_lanelet2_extension_python from the ROS environment:
   source /opt/ros/humble/setup.bash
   source ~/ros/ad_ros2_ws/install/setup.bash
 
-用法:
+Usage:
   python3 utils/validate_autoware_map.py lanelet2_map.osm
 """
 
@@ -44,25 +45,25 @@ except ImportError as e:
         sys.exit(_msg)
     raise ImportError(_msg) from e
 
-# lanelet2_map_loader 支持的 format_version 主版本 (lanelet::autoware::version = format_v2)
+# Major format_version supported by lanelet2_map_loader (lanelet::autoware::version = format_v2)
 SUPPORTED_FORMAT_VERSION = 2
 
 
 @dataclass
 class Result:
-    """validate() 的结果，id 均为字符串"""
+    """Result of validate(), all ids are strings"""
     format_version: str = ""
     map_version: str = ""
     n_lanelets: int = 0
     n_reg_elems: int = 0
-    load: list = field(default_factory=list)           # 解析错误 / format_version 问题
-    elevation: list = field(default_factory=list)      # 缺少 ele 标签的 node id
-    traffic_light: list = field(default_factory=list)  # [(问题, 引用该红绿灯的 lanelet id)]
-    turn_direction: dict = None                        # {lanelet id: 冲突的 lanelet / area id}；None 表示未检查
+    load: list = field(default_factory=list)           # parse errors / format_version issues
+    elevation: list = field(default_factory=list)      # ids of nodes missing the ele tag
+    traffic_light: list = field(default_factory=list)  # [(issue, ids of lanelets referencing this traffic light)]
+    turn_direction: dict = None                        # {lanelet id: conflicting lanelet / area ids}; None means not checked
 
 
 def parse_major_version(format_version):
-    """同 autoware_osm_parser.cpp 的 parseMajorVersion: `1` / `1.10` / `1.10.100` -> 1，否则 None"""
+    """Same as parseMajorVersion in autoware_osm_parser.cpp: `1` / `1.10` / `1.10.100` -> 1, otherwise None"""
     m = re.fullmatch(r"(\d+\.)?(\d+\.)?(\d+)", format_version)
     if not m:
         return None
@@ -70,13 +71,13 @@ def parse_major_version(format_version):
 
 
 def check_format_version(osm_root, res):
-    """同 lanelet2_map_loader_node.cpp；loader 在 allow_unsupported_version=true 时只告警"""
+    """Same as lanelet2_map_loader_node.cpp; the loader only warns when allow_unsupported_version=true"""
     meta = osm_root.find("MetaInfo")
     if meta is not None:
         res.format_version, res.map_version = meta.get("format_version", ""), meta.get("map_version", "")
     major = parse_major_version(res.format_version)
     if major is None:
-        # loader 只拦截缺失或非数字开头的版本号，这里把无法解析的 (如 "2a") 也算作问题
+        # The loader only rejects missing versions or ones not starting with a digit; unparsable ones (e.g. "2a") count here too
         res.load.append(f"map has no format_version(null) or non semver-style format_version({res.format_version})")
     elif major > SUPPORTED_FORMAT_VERSION:
         res.load.append(f"format_version({major}) of the map is larger than the supported version({SUPPORTED_FORMAT_VERSION})")
@@ -87,7 +88,8 @@ def check_elevation_tag(osm_root):
 
 
 def check_traffic_light(lanelet_map):
-    # validation.cpp 逐 lanelet 检查，被多条 lanelet 引用的红绿灯会重复报告；这里去重，并记下引用它的 lanelet
+    # validation.cpp checks lanelet by lanelet, so a traffic light referenced by several lanelets is reported repeatedly;
+    # here it is deduplicated, and the lanelets referencing it are recorded
     lights, users = {}, defaultdict(set)
     for lanelet in lanelet_map.laneletLayer:
         for reg_elem in lanelet.regulatoryElements:
@@ -130,22 +132,22 @@ def check_turn_direction(lanelet_map):
 
 
 def validate(map_path):
-    """运行全部检查，返回 Result；地图文件无法读取时抛出 OSError / ET.ParseError"""
+    """Run all checks and return a Result; raise OSError / ET.ParseError if the map file cannot be read"""
     osm_root = ET.parse(map_path).getroot()
     res = Result()
     check_format_version(osm_root, res)
     res.elevation = check_elevation_tag(osm_root)
     try:
         lanelet_map, errors = lanelet2.io.loadRobust(map_path, MGRSProjector(Origin(0.0, 0.0)))
-    except Exception as e:  # lanelet2 的致命解析错误 (validation.cpp 中未捕获，直接崩溃)
+    except Exception as e:  # fatal lanelet2 parse error (not caught in validation.cpp, which simply crashes)
         res.load.append(f"failed to load map: {e}")
         return res
-    # errors 的第一条是标题 "Errors ocurred while parsing Lanelet Map:"，其余每条以 "\t- " 开头
+    # The first entry of errors is the title "Errors ocurred while parsing Lanelet Map:", each other one starts with "\t- "
     res.load += [f"parse error: {error.strip().removeprefix('- ')}" for error in errors
                  if not error.startswith("Errors ocurred")]
     res.n_lanelets, res.n_reg_elems = len(lanelet_map.laneletLayer), len(lanelet_map.regulatoryElementLayer)
     res.traffic_light = check_traffic_light(lanelet_map)
-    # 解析出错时 lanelet 的边界可能不完整，在其上建路由图会段错误 (validation.cpp 同样会崩)
+    # With parse errors the lanelet bounds may be incomplete, building a routing graph on them segfaults (validation.cpp too)
     if not errors:
         res.turn_direction = check_turn_direction(lanelet_map)
     return res
