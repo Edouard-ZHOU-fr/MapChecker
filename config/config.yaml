@@ -69,6 +69,7 @@ map_min_p: 0.5               # with Using_LR: scored WARNINGs whose p is below t
                               #   coloring, hotspots and the pop-up window); the report and the log still list them;
                               #   0 shows all
 
-isShow: true                  # true: after the report, show the heatmap in a new pop-up window (zoom, pan, click an issue point
-                              #   or lanelet to show the lanelet id), the program exits when the window is closed;
+isShow: true                  # true: after the report, show the heatmap in a window (pan, zoom, list of the hotspots and
+                              #   issues, click an issue point or a lanelet for details; resizing the window never
+                              #   stretches the map), the program exits when the window is closed;
                               #   requires heatmap.enabled to be true and a graphical interface (otherwise only a notice is printed)

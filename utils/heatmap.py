@@ -6,13 +6,15 @@ have weight 1; density and hotspots use the sum of weights (i.e. the expected nu
 all weights are 1, i.e. the number of issues.
 Issues of extension checks (ext/, checks not in MARKERS) are only marked with green dots (one shape per extension),
 and are not used for coloring or hotspots. ERRORs of all checks are marked with red dots.
-In the pop-up window, clicking an issue point or a lanelet shows the lanelet id, clicking a legend entry moves the
-view to its issues (or hotspots) one by one, see _enable_click()
+With isShow, the same map is shown after the report in a Tk window (utils/heatmap_window.py: pan / zoom without
+distortion, layers, list of the hotspots and issues, details of the selection); show_windows() opens it together
+with the pyplot windows of the extension checks
 """
 
+import os
 import sys
 import time
-from collections import Counter
+from collections import Counter, namedtuple
 
 import numpy as np
 
@@ -27,11 +29,27 @@ EXT_COLOR = "#2f9e44"    # extension check (ext/) issue points: green, each exte
 EXT_MARKERS = ("o", "D", "v", "P", "X", "*")
 ERROR_COLOR = "#e03131"  # ERROR points (all checks): red dots, drawn above the WARNING points
 SAVE_DPI = 150
-SHOW_MAX_HEIGHT = 900    # maximum height of the pop-up window (pixels)
-CLICK_PIXELS = 8         # in the pop-up window: within this many pixels of an issue point counts as a hit; press and
+SHOW_MAX_HEIGHT = 900    # maximum height of the pyplot windows of the extension checks (pixels), e.g. altitude
+CLICK_PIXELS = 8         # in the windows: within this many pixels of an issue point counts as a hit; press and
                          # release farther apart than this counts as a drag (zoom / pan), not a click
-MAX_CLICK_LINES = 8      # maximum number of issues shown per click
 HIGHLIGHT_COLOR = "#f08c00"
+NON_GUI_BACKENDS = ("agg", "pdf", "pgf", "ps", "svg", "cairo", "template")
+
+# What report_hotspots() draws, in the png and in the window: pts / items / weights as returned by issue_points()
+# (without the issues hidden by map_min_p), core: whether each issue belongs to Check 1~3, spots: indices of the issues
+# of each hotspot, note: issues hidden by map_min_p, stamp: time of the report, extent: area drawn (x0, y0, x1, y1),
+# dens / img_extent: density()
+Heatmap = namedtuple("Heatmap", "lanelets aois pts items weights core weighted spots radius map_name note stamp "
+                                "extent dens img_extent")
+# A layer of the drawing, i.e. an entry of the legend:
+#   kind:    "density", "aoi", "check" (issue points of Check 1~3), "ext" (of an extension check), "errors" (ERRORs of
+#            all checks) or "hotspots"
+#   targets: the items the window can go to, each one the indices of its issues: one issue per target for the points,
+#            in the order of the output (unscored first, then by descending p); one hotspot per target, by rank
+#   symbol:  legend icon in the window: scatter() arguments (with "marker"), plot() arguments, or None (density)
+Layer = namedtuple("Layer", "kind label artists targets symbol")
+
+_pending = []  # Heatmaps of report_hotspots(show=True), shown by show_windows()
 
 
 def issue_points(out, lanelets, radius):
@@ -109,11 +127,22 @@ def _extent(lanelets, aois, pts, margin):
     return lo[0], lo[1], hi[0], hi[1]
 
 
+def hotspot_text(pts, items, weights, weighted, members):
+    """Description of a hotspot (indices members of its issues), as in the log: center, size, checks, lanelets"""
+    by_cat = Counter(items[m][0] for m in members)
+    ids = sorted({i for m in members for i in items[m][1]}, key=int)
+    listed = " ".join(ids[:MAX_LISTED_LANELETS]) + (f" ... (+{len(ids) - MAX_LISTED_LANELETS})"
+                                                    if len(ids) > MAX_LISTED_LANELETS else "")
+    size = f"{len(members)} issues" + (f", p-weighted {weights[members].sum():.1f}" if weighted else "")
+    return (f"center {fmt_xy(pts[members].mean(axis=0))}: {size} "
+            f"({', '.join(f'{c} {n}' for c, n in by_cat.most_common())}), lanelets: {listed}")
+
+
 def report_hotspots(lanelets, aois, out, path, radius, top, map_name, show=False, min_p=0.0):
     """
     List hotspots in the log and save the heatmap to path (png).
     aois:  AOI polygons when only checking the AOI, the figure is limited to the AOI; otherwise empty, draw the whole map
-    show:  also create a window in pyplot, popped up later by show_windows()
+    show:  also show the heatmap in a window (utils/heatmap_window.py), opened after the report by show_windows()
     min_p: with a model, scored WARNINGs with p < min_p are not shown on the map (points, coloring, hotspots, window);
            the report still lists them
     With a model (Using_LR), weighted by p, see the beginning of this module.
@@ -139,13 +168,7 @@ def report_hotspots(lanelets, aois, out, path, radius, top, map_name, show=False
     core_idx = np.nonzero(core)[0]
     spots = [core_idx[m] for m in find_hotspots(pts[core_idx], weights[core_idx], radius, top)]
     for k, members in enumerate(spots, 1):
-        by_cat = Counter(items[m][0] for m in members)
-        ids = sorted({i for m in members for i in items[m][1]}, key=int)
-        listed = " ".join(ids[:MAX_LISTED_LANELETS]) + (f" ... (+{len(ids) - MAX_LISTED_LANELETS})"
-                                                        if len(ids) > MAX_LISTED_LANELETS else "")
-        size = f"{len(members)} issues" + (f", p-weighted {weights[members].sum():.1f}" if weighted else "")
-        out.info(f"#{k:<2} center {fmt_xy(pts[members].mean(axis=0))}: {size} "
-                 f"({', '.join(f'{c} {n}' for c, n in by_cat.most_common())}), lanelets: {listed}")
+        out.info(f"#{k:<2} {hotspot_text(pts, items, weights, weighted, members)}")
     if not spots:
         out.info(f"No area with at least {MIN_HOTSPOT_ISSUES} {unit} within {radius:.0f} m")
     ext = Counter(item[0] for item, c in zip(items, core) if not c)
@@ -153,248 +176,222 @@ def report_hotspots(lanelets, aois, out, path, radius, top, map_name, show=False
         out.info(f"Ext checks ({', '.join(f'{c} {n}' for c, n in ext.items())}): not counted in hotspots, "
                  f"shown as green dots in the heatmap")
 
-    _save_image(path, lanelets, aois, pts, items, weights, core, weighted, spots, radius, map_name, show, note)
+    extent = _extent(lanelets, aois, pts, radius)
+    dens, img_extent = density(pts[core], weights[core], extent, radius / 2)
+    heat = Heatmap(lanelets, aois, pts, items, weights, core, weighted, spots, radius, map_name, note,
+                   time.strftime("%Y-%m-%d %H:%M:%S"), extent, dens, img_extent)
+    _save_image(path, heat)
+    if show:
+        _pending.append(heat)
     out.info(f"Heatmap: {path}")
     return [pts[members] for members in spots]
 
 
-def show_windows():
+def prepare_windows():
     """
-    Pop up the windows created in pyplot (zoomable, pannable): the heatmap of report_hotspots(show=True), and windows
-    created by extension checks (e.g. isShow of altitude); returns after all windows are closed. Returns directly if no
-    window was created; without a GUI, only prints a message
+    Called before the checks when the heatmap window will be shown: the pyplot windows of the extension checks (e.g.
+    isShow of altitude) then use the Tk backend, so that show_windows() shows them together with the heatmap window,
+    in the same event loop. Does nothing if pyplot is already in use, if MPLBACKEND is set, or without tkinter or a
+    display (no window is shown then, see show_windows())
     """
-    plt = sys.modules.get("matplotlib.pyplot")  # if pyplot was never imported there is no window, no need to import it
-    if plt is None or not plt.get_fignums():
+    if "matplotlib.pyplot" in sys.modules or os.environ.get("MPLBACKEND"):
+        return
+    if sys.platform.startswith("linux") and not os.environ.get("DISPLAY"):
+        return
+    try:
+        import tkinter  # noqa: F401
+    except ImportError:
         return
     import matplotlib
 
-    titles = ", ".join(plt.figure(n).canvas.manager.get_window_title() for n in plt.get_fignums())
-    if matplotlib.get_backend().lower() in ("agg", "pdf", "pgf", "ps", "svg", "cairo", "template"):
-        print(f"Windows not shown: no display available (matplotlib backend {matplotlib.get_backend()}): {titles}")
+    matplotlib.use("TkAgg")
+
+
+def _tk_root():
+    """A new Tk main window, None without tkinter or a display"""
+    try:
+        import tkinter
+    except ImportError:
+        return None
+    try:
+        return tkinter.Tk(className="MapChecker")
+    except tkinter.TclError:
+        return None
+
+
+def show_windows():
+    """
+    Pop up the windows: the heatmap window of report_hotspots(show=True) (Tk, utils/heatmap_window.py) and the windows
+    created in pyplot by extension checks (e.g. isShow of altitude); returns after all windows are closed. Returns
+    directly if no window was created; without a GUI, only prints a message
+    """
+    heatmaps = list(_pending)
+    _pending.clear()
+    plt = sys.modules.get("matplotlib.pyplot")  # if pyplot was never imported there is no window, no need to import it
+    figs = [plt.figure(n) for n in plt.get_fignums()] if plt is not None else []
+    if not heatmaps and not figs:
         return
-    print(f"Showing {titles} (click an issue or a lanelet for details), close the windows to exit")
-    plt.show()
+    import matplotlib
+
+    backend = matplotlib.get_backend()
+    windows, hidden = [], []
+    for h in heatmaps:
+        root = _tk_root()
+        if root is None:
+            hidden.append(f"MapChecker heatmap: {h.map_name}")
+            continue
+        from .heatmap_window import HeatmapWindow
+
+        windows.append(HeatmapWindow(root, h))
+    if backend.lower() in NON_GUI_BACKENDS:
+        hidden += [f.canvas.manager.get_window_title() for f in figs]
+        figs = []
+    if hidden:
+        print(f"Windows not shown: no display available (matplotlib backend {backend}): {', '.join(hidden)}")
+    if not windows and not figs:
+        return
+    titles = [w.root.title() for w in windows] + [f.canvas.manager.get_window_title() for f in figs]
+    print(f"Showing {', '.join(titles)} (click an issue or a lanelet for details), close the windows to exit")
+    if not windows:
+        plt.show()
+    elif figs and "tk" not in backend.lower():
+        windows[0].root.mainloop()
+        plt.show()  # pyplot of another GUI toolkit (prepare_windows() not called): after the heatmap window
+    else:
+        if figs:
+            plt.show(block=False)  # Tk windows of pyplot: in the same event loop as the heatmap window
+        windows[0].root.mainloop()  # runs until all Tk windows (heatmap and pyplot) are closed
 
 
-def _save_image(path, lanelets, aois, pts, items, weights, core, weighted, spots, radius, map_name, show=False,
-                note=""):
-    """
-    Save the heatmap; if show is True, draw the same figure again in a pyplot window (scaled down to the screen),
-    the saved png is unaffected.
-    core: whether each issue belongs to Check 1~3, only those are used for coloring; extension check issues are only
-    drawn as green dots
-    """
+def _save_image(path, h):
+    """Save heatmap h (png)"""
     from matplotlib.figure import Figure
 
-    extent = _extent(lanelets, aois, pts, radius)
-    dens, img_extent = density(pts[core], weights[core], extent, radius / 2)
-    w, h = extent[2] - extent[0], extent[3] - extent[1]
-    figsize = (12, float(np.clip(12 * h / w, 5, 14)))
-    args = (lanelets, aois, pts, items, weights, core, weighted, spots, radius, map_name, extent, dens, img_extent,
-            note)
-
-    fig = Figure(figsize=figsize, dpi=SAVE_DPI, constrained_layout=True)
-    _draw(fig, *args)
+    w, ht = h.extent[2] - h.extent[0], h.extent[3] - h.extent[1]
+    fig = Figure(figsize=(12, float(np.clip(12 * ht / w, 5, 14))), dpi=SAVE_DPI, constrained_layout=True)
+    _draw(fig, h)
     fig.savefig(path)
-    if show:
-        import matplotlib.pyplot as plt
-        fig = plt.figure(figsize=figsize, dpi=min(100.0, SHOW_MAX_HEIGHT / figsize[1]), constrained_layout=True)
-        fig.canvas.manager.set_window_title(f"MapChecker heatmap: {map_name}")
-        ax, groups = _draw(fig, *args)
-        _enable_click(fig, ax, lanelets, pts, items, groups, radius)
 
 
-def _draw(fig, lanelets, aois, pts, items, weights, core, weighted, spots, radius, map_name, extent, dens,
-          img_extent, note=""):
-    from matplotlib.cm import ScalarMappable
-    from matplotlib.collections import PolyCollection
+def _unit(h):
+    return "p-weighted issues" if h.weighted else "issues"
+
+
+def color_scale(h):
+    """
+    Colors of the density: (norm, cmap). An isolated single issue (density <= 1) is blue, the denser the issues the
+    redder
+    """
     from matplotlib.colors import LinearSegmentedColormap, Normalize
+
+    norm = Normalize(1.0, max(h.dens.max(), MIN_HOTSPOT_ISSUES + 1), clip=True)
+    return norm, LinearSegmentedColormap.from_list("issues", HEAT_COLORS)
+
+
+def scale_label(h):
+    """Label of the color scale"""
+    return f"{_unit(h)} nearby (Gaussian weighted, sigma = {h.radius / 2:.0f} m)"
+
+
+def summary(h):
+    """Number of issues shown and of hotspots"""
+    located = (f"{h.core.sum()} issues located" + (f" (p-weighted {h.weights[h.core].sum():.1f})" if h.weighted else "")
+               + h.note)
+    if not h.core.all():
+        located += f" + {(~h.core).sum()} ext (green dots)"
+    return f"{located}, {len(h.spots)} hotspots"
+
+
+def style_axes(ax):
+    """Colors of the map axes (png and window)"""
+    ax.set_facecolor("#fcfcfb")
+    ax.tick_params(colors="#6b6b66", labelsize=8)
+    for spine in ax.spines.values():
+        spine.set_color("#d0d0cc")
+
+
+def draw_layers(ax, h):
+    """
+    Draw heatmap h in ax, the same in the png and in the window: lanelets, AOI, density coloring, issue points and
+    hotspots. Returns the layers ([Layer]): density, AOI, then the entries of the legend in order
+    """
+    from matplotlib.collections import PolyCollection
     from matplotlib.lines import Line2D
     from matplotlib.patches import Circle
 
-    # An isolated single issue (density <= 1) is blue, the denser the issues the redder; when weighted by p, low-p issues
-    # are fainter; areas without issues are transparent, showing the map
-    unit = "p-weighted issues" if weighted else "issues"
-    norm = Normalize(1.0, max(dens.max(), MIN_HOTSPOT_ISSUES + 1), clip=True)
-    cmap = LinearSegmentedColormap.from_list("issues", HEAT_COLORS)
-    rgba = cmap(norm(dens))
-    rgba[..., 3] = 0.75 * np.clip(dens / 0.5, 0.0, 1.0)
+    # when weighted by p, low-p issues are fainter; areas without issues are transparent, showing the map
+    norm, cmap = color_scale(h)
+    rgba = cmap(norm(h.dens))
+    rgba[..., 3] = 0.75 * np.clip(h.dens / 0.5, 0.0, 1.0)
+    pts, items = h.pts, h.items
 
-    fig.patch.set_facecolor("#fcfcfb")
-    ax = fig.add_subplot()
-    ax.set_facecolor("#fcfcfb")
-
-    ax.add_collection(PolyCollection([ll.polygon for ll in lanelets.values()], facecolors="#dcdcd8",
+    ax.add_collection(PolyCollection([ll.polygon for ll in h.lanelets.values()], facecolors="#dcdcd8",
                                      edgecolors="#b5b5b0", linewidths=0.3, zorder=1))
-    for k, poly in enumerate(aois):
+    aoi_style = dict(color="#8a8a85", linewidth=1.0, linestyle="--")
+    aoi = []
+    for k, poly in enumerate(h.aois):
         closed = np.vstack([poly, poly[:1]])
-        ax.plot(closed[:, 0], closed[:, 1], color="#8a8a85", linewidth=1.0, linestyle="--", zorder=2,
-                label="AOI" if k == 0 else None)
-    ax.imshow(rgba, origin="lower", extent=img_extent, interpolation="bilinear", zorder=3)
+        aoi += ax.plot(closed[:, 0], closed[:, 1], zorder=2, label="AOI" if k == 0 else None, **aoi_style)
+    image = ax.imshow(rgba, origin="lower", extent=h.img_extent, interpolation="bilinear", zorder=3)
+    layers = [Layer("density", "density coloring", [image], [], None)]
+    if aoi:
+        layers.append(Layer("aoi", "AOI", aoi, [], aoi_style))
 
-    # legend label -> targets visited one by one when clicking the legend entry in the window, each target being the
-    # indices of its issues: a single issue, in the order of the output (unscored first, then by descending p), or a
-    # hotspot, by rank
-    groups = {}
-
-    def group(label, sel):
-        groups[label] = [[i] for i in sorted(sel, key=lambda i: (items[i][2] is not None, -(items[i][2] or 0.0)))]
-        return label
+    def points(kind, sel, label, zorder, **style):
+        targets = [[i] for i in sorted(sel, key=lambda i: (items[i][2] is not None, -(items[i][2] or 0.0)))]
+        artist = ax.scatter(pts[sel, 0], pts[sel, 1], zorder=zorder, label=label, **style)
+        layers.append(Layer(kind, label, [artist], targets, style))
 
     error = np.array([item[3].startswith("[ERROR]") for item in items], dtype=bool)
     for category, marker in MARKERS.items():
         sel = [i for i, item in enumerate(items) if item[0] == category and not error[i]]
         if sel:
-            ax.scatter(pts[sel, 0], pts[sel, 1], s=14, marker=marker, facecolors="white", edgecolors="#222222",
-                       linewidths=0.6, zorder=4, label=group(f"{category} ({len(sel)})", sel))
-    for k, category in enumerate(dict.fromkeys(item[0] for item, c in zip(items, core) if not c)):
+            points("check", sel, f"{category} ({len(sel)})", 4, s=14, marker=marker, facecolors="white",
+                   edgecolors="#222222", linewidths=0.6)
+    for k, category in enumerate(dict.fromkeys(item[0] for item, c in zip(items, h.core) if not c)):
         sel = [i for i, item in enumerate(items) if item[0] == category and not error[i]]
         if sel:
-            ax.scatter(pts[sel, 0], pts[sel, 1], s=16, marker=EXT_MARKERS[k % len(EXT_MARKERS)],
-                       facecolors=EXT_COLOR, edgecolors="none", zorder=4,
-                       label=group(f"{category} ({len(sel)}, ext)", sel))
+            points("ext", sel, f"{category} ({len(sel)}, ext)", 4, s=16, marker=EXT_MARKERS[k % len(EXT_MARKERS)],
+                   facecolors=EXT_COLOR, edgecolors="none")
     if error.any():
         sel = list(np.nonzero(error)[0])
-        ax.scatter(pts[error, 0], pts[error, 1], s=30, marker="o", facecolors=ERROR_COLOR, edgecolors="#1f1f1f",
-                   linewidths=0.7, zorder=4.5, label=group(f"ERROR ({len(sel)})", sel))
+        points("errors", sel, f"ERROR ({len(sel)})", 4.5, s=30, marker="o", facecolors=ERROR_COLOR,
+               edgecolors="#1f1f1f", linewidths=0.7)
 
-    for k, members in enumerate(spots, 1):
+    spots = []
+    for k, members in enumerate(h.spots, 1):
         c = pts[members].mean(axis=0)
-        r = max(radius / 2, np.linalg.norm(pts[members] - c, axis=1).max() + 5.0)
-        ax.add_patch(Circle(c, r, fill=False, edgecolor="#1f1f1f", linewidth=1.2, zorder=5))
-        size = f"{weights[members].sum():.1f}" if weighted else f"{len(members)}"
-        ax.annotate(f"#{k}  {size}", c + r * np.sqrt(0.5), fontsize=9, fontweight="bold", color="#1f1f1f",
-                    zorder=6, bbox=dict(boxstyle="round,pad=0.2", facecolor="white", edgecolor="none", alpha=0.85))
-    if spots:
-        ax.add_line(Line2D([], [], color="#1f1f1f", linewidth=1.2, label=f"hotspot (#rank  {unit})"))
-        groups[f"hotspot (#rank  {unit})"] = [list(members) for members in spots]
+        r = max(h.radius / 2, np.linalg.norm(pts[members] - c, axis=1).max() + 5.0)
+        spots.append(ax.add_patch(Circle(c, r, fill=False, edgecolor="#1f1f1f", linewidth=1.2, zorder=5)))
+        size = f"{h.weights[members].sum():.1f}" if h.weighted else f"{len(members)}"
+        spots.append(ax.annotate(f"#{k}  {size}", c + r * np.sqrt(0.5), fontsize=9, fontweight="bold",
+                                 color="#1f1f1f", zorder=6,
+                                 bbox=dict(boxstyle="round,pad=0.2", facecolor="white", edgecolor="none",
+                                           alpha=0.85)))
+    if h.spots:
+        label = f"hotspot (#rank  {_unit(h)})"
+        spots.append(ax.add_line(Line2D([], [], color="#1f1f1f", linewidth=1.2, label=label)))  # legend of the png
+        layers.append(Layer("hotspots", label, spots, [list(members) for members in h.spots],
+                            dict(marker="o", s=90, facecolors="none", edgecolors="#1f1f1f", linewidths=1.2)))
+    return layers
 
-    ax.set_xlim(extent[0], extent[2])
-    ax.set_ylim(extent[1], extent[3])
+
+def _draw(fig, h):
+    """The png: map, title, legend and color scale"""
+    from matplotlib.cm import ScalarMappable
+
+    fig.patch.set_facecolor("#fcfcfb")
+    ax = fig.add_subplot()
+    style_axes(ax)
+    draw_layers(ax, h)
+    ax.set_xlim(h.extent[0], h.extent[2])
+    ax.set_ylim(h.extent[1], h.extent[3])
     ax.set_aspect("equal")
     ax.set_xlabel("x (m)", color="#6b6b66")
     ax.set_ylabel("y (m)", color="#6b6b66")
-    ax.tick_params(colors="#6b6b66", labelsize=8)
-    for spine in ax.spines.values():
-        spine.set_color("#d0d0cc")
-    located = (f"{core.sum()} issues located" + (f" (p-weighted {weights[core].sum():.1f})" if weighted else "")
-               + note)
-    if not core.all():
-        located += f" + {(~core).sum()} ext (green dots)"
-    fig.suptitle(f"MapChecker issue heatmap: {map_name}\n{located}, {len(spots)} hotspots, "
-                 f"{time.strftime('%Y-%m-%d %H:%M:%S')}", fontsize=11, color="#1f1f1f")
+    fig.suptitle(f"MapChecker issue heatmap: {h.map_name}\n{summary(h)}, {h.stamp}", fontsize=11, color="#1f1f1f")
     ax.legend(loc="best", fontsize=8, framealpha=0.9)  # automatically avoids issue points and hotspot circles
 
-    bar = fig.colorbar(ScalarMappable(norm, cmap), ax=ax, shrink=0.6, pad=0.01)
-    bar.set_label(f"{unit} nearby (Gaussian weighted, sigma = {radius / 2:.0f} m)", color="#6b6b66")
+    bar = fig.colorbar(ScalarMappable(*color_scale(h)), ax=ax, shrink=0.6, pad=0.01)
+    bar.set_label(scale_label(h), color="#6b6b66")
     bar.ax.tick_params(colors="#6b6b66", labelsize=8)
-    return ax, groups
-
-
-def _enable_click(fig, ax, lanelets, pts, items, groups, radius):
-    """
-    Clicking in the pop-up window (also in zoom / pan mode, dragging doesn't count) shows lanelet ids, and outlines the
-    related lanelets in orange:
-      - hit an issue point: show the lanelets, check and p of all issues there, and print their log lines in the terminal
-      - a legend entry (groups from _draw()): move the view to its next issue (or hotspot), shown the same way; each
-        click goes to the next one, cycling; the toolbar's back button returns to the previous view
-      - otherwise: show the lanelet(s) at the clicked location (possibly several where they overlap)
-      - click on empty space: hide
-    """
-    from matplotlib.collections import PolyCollection
-    from matplotlib.path import Path
-
-    label = ax.annotate("", (0, 0), xytext=(12, 12), textcoords="offset points", fontsize=9, color="#1f1f1f",
-                        zorder=8, visible=False,
-                        bbox=dict(boxstyle="round,pad=0.3", facecolor="white", edgecolor="#1f1f1f", alpha=0.95))
-    highlight = PolyCollection([], facecolors="none", edgecolors=HIGHLIGHT_COLOR, linewidths=2.0, zorder=7)
-    ax.add_collection(highlight)
-    fig.text(0.005, 0.005, "click an issue or a lanelet to show its id; click a legend entry to go to its issues one by "
-                           "one", fontsize=8, color="#6b6b66")
-    paths = {lid: Path(ll.polygon) for lid, ll in lanelets.items()}
-    pressed, cursor = {}, {}  # cursor: legend label -> index of the next target
-
-    def issue_lines(hits):
-        lines = [f"lanelet {' / '.join(items[h][1]) or '-'}  {items[h][0]}"
-                 + ("" if items[h][2] is None else f"  p={items[h][2]:.2f}") for h in hits[:MAX_CLICK_LINES]]
-        if len(hits) > MAX_CLICK_LINES:
-            lines.append(f"... (+{len(hits) - MAX_CLICK_LINES})")
-        return lines
-
-    def show(xy, ids, lines, pixel):
-        highlight.set_verts([lanelets[i].polygon for i in ids if i in lanelets])
-        label.set_visible(bool(lines))
-        if lines:
-            # place the text on the side of the point facing the figure center, so it doesn't go beyond the figure
-            box = ax.bbox
-            right, top = pixel[0] > (box.x0 + box.x1) / 2, pixel[1] > (box.y0 + box.y1) / 2
-            label.xy = xy
-            label.xyann = (-12 if right else 12, -12 if top else 12)
-            label.set_horizontalalignment("right" if right else "left")
-            label.set_verticalalignment("top" if top else "bottom")
-            label.set_text("\n".join(lines))
-        fig.canvas.draw_idle()
-
-    def jump(name):
-        """Move the view to the next target of the legend entry name, keeping the shape of the current view"""
-        targets = groups[name]
-        k = cursor.get(name, 0) % len(targets)
-        cursor[name] = k + 1
-        members = targets[k]
-        center = pts[members].mean(axis=0)
-        half = max(1.5 * radius, np.abs(pts[members] - center).max() + radius)
-        toolbar = fig.canvas.toolbar
-        if toolbar is not None and toolbar._nav_stack() is None:
-            toolbar.push_current()  # the full map becomes the home view
-        (x0, x1), (y0, y1) = ax.get_xlim(), ax.get_ylim()
-        aspect = (x1 - x0) / (y1 - y0)
-        hw, hh = (half * aspect, half) if aspect >= 1 else (half, half / aspect)
-        ax.set_xlim(center[0] - hw, center[0] + hw)
-        ax.set_ylim(center[1] - hh, center[1] + hh)
-        if toolbar is not None:
-            toolbar.push_current()  # the back button returns to the previous view
-        title = f"{name.split(' (')[0]} {k + 1}/{len(targets)}"
-        print(f"--- {title}\n" + "\n".join(items[h][3] for h in members))
-        show(center, sorted({i for h in members for i in items[h][1]}, key=int), [title] + issue_lines(members),
-             ax.transData.transform(center))
-
-    def legend_entry(event):
-        """Text of the legend entry under the click, None if the click is not on the legend"""
-        legend = ax.get_legend()
-        if legend is None or not legend.get_window_extent().contains(event.x, event.y):
-            return None
-        texts = legend.get_texts()
-        nearest = min(texts, key=lambda t: abs(t.get_window_extent().y0 + t.get_window_extent().y1 - 2 * event.y))
-        return nearest.get_text()
-
-    def on_press(event):
-        pressed["xy"] = (event.x, event.y)
-
-    def on_release(event):
-        start = pressed.pop("xy", None)
-        if (event.inaxes is not ax or event.button != 1 or start is None
-                or np.hypot(event.x - start[0], event.y - start[1]) > CLICK_PIXELS):
-            return
-        entry = legend_entry(event)
-        if entry is not None:
-            if entry in groups:
-                jump(entry)
-            return
-        dist = np.linalg.norm(ax.transData.transform(pts) - (event.x, event.y), axis=1)
-        hits = [i for i in np.argsort(dist) if dist[i] <= CLICK_PIXELS]
-        if hits:
-            xy = pts[hits[0]]
-            ids = sorted({i for h in hits for i in items[h][1]}, key=int)
-            lines = issue_lines(hits)
-            print("\n".join(items[h][3] for h in hits))
-        else:
-            xy = (event.xdata, event.ydata)
-            ids = sorted((lid for lid, path in paths.items() if path.contains_point(xy)), key=int)
-            lines = [f"lanelet {', '.join(ids)}"] if ids else []
-            if ids:
-                print(lines[0])
-        show(xy, ids, lines, (event.x, event.y))
-
-    fig.canvas.mpl_connect("button_press_event", on_press)
-    fig.canvas.mpl_connect("button_release_event", on_release)

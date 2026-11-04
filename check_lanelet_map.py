@@ -25,7 +25,9 @@ Scoring only uses the numbers in the model, scikit-learn is not needed. See READ
 
 When heatmap.enabled is true, the areas with the most issues (Hotspots) are listed at the end of the log, and a
 heatmap .png with the same name is generated in the log directory: the map is colored by issue density from blue (few)
-to red (many), with these areas circled; when isShow is true, the heatmap window pops up after the report ends.
+to red (many), with these areas circled; when isShow is true, the heatmap window (utils/heatmap_window.py: map
+never stretched by resizing, pan / zoom, layers, list of the hotspots and issues, details) pops up after the report
+ends.
 Extension checks can also create pyplot windows (e.g. isShow of altitude), which pop up together with the heatmap window.
 When Using_LR is true, the heatmap and the areas are weighted by p (a scored WARNING counts as p, others count as 1),
 i.e. they are ranked by the expected number of true issues.
@@ -74,7 +76,7 @@ from utils import ext as extmod
 from utils.checks import run_core_checks
 from utils.config import DEFAULT_CONFIG_PATH, load_config
 from utils.context import MapContext
-from utils.heatmap import report_hotspots, show_windows
+from utils.heatmap import prepare_windows, report_hotspots, show_windows
 from utils.ignore import ignore_by_category, load_ignore, report_ignored
 from utils.masque import check_config as check_masque_config
 from utils.masque import report_masque
@@ -298,6 +300,8 @@ def main():
             parser.error(f"map_min_p must be between 0 and 1, got {min_p}")
         heatmap = {"radius": float(cfg["heatmap"]["radius"]), "top": int(cfg["heatmap"]["top"]),
                    "show": bool(cfg["isShow"] if args.show_heatmap is None else args.show_heatmap), "min_p": min_p}
+        if heatmap["show"]:
+            prepare_windows()  # windows of extension checks (e.g. isShow of altitude) open with the heatmap window
 
     masque = None
     if cfg["masque"]["enabled"] if args.masque is None else args.masque:
