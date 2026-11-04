@@ -9,8 +9,8 @@ max_facing_angle: 40.0       # max angle (deg) between the light and the lane, m
                              #   a light is drawn left -> right as seen from the stop line
 min_forward_distance: 1.0    # min distance (m) of the light ahead of the stop line along the lane, closer or behind
                              #   it is not seen by the stopped vehicle
-min_height: 0.5              # range (m) of the light center height above the stop line
-max_height: 5.0
+min_height: 0.8              # range (m) of the light center height above the stop line
+max_height: 5.5
 
 # Light bulbs (light_bulbs of the regulatory element)
 check_light_bulbs: false      # false: the light_bulbs ways are not checked
