@@ -21,6 +21,7 @@ Lanelet2 地图检查工具：找出地图中缺少 `turn_direction`（转向灯
 |---|---|
 | 检查 1、2，LR 打分 | Python 3.10+、`numpy`、`PyYAML` |
 | 热力图 | `matplotlib` |
+| 热力图窗口（`isShow`） | `tkinter`（`python3-tk`） |
 | 检查 3（Autoware） | ROS 2 Humble 和 `autoware_lanelet2_extension_python`，运行前先 source：<br>`source /opt/ros/humble/setup.bash`<br>`source ~/ros/ad_ros2_ws/install/setup.bash` |
 | 训练打分模型 | `scikit-learn`（及其依赖 `scipy`）、`git`（只有 `train_model.py` 需要）；`config/dataset.yaml` 中 `autoware_checking: true` 时还需要 source ROS |
 
@@ -91,13 +92,13 @@ python3 check_lanelet_map.py --only-ext crosswalk     # 只运行扩展检查 cr
 | `parallel_min_gap` | `1.5` | 上面平行车道的中心线最小间距（米）；设成很大的值（如 `99`）即不排除 |
 | `ignore_isolated_turns` | `false` | `true`：不与其他 lane 交叉 / 汇入的弯道（分叉不算）不检查 `turn_direction` |
 | `straight_as_turn_light` | `true` | `true`：`straight` 也算设置了转向灯，弯道和相交的直行 lanelet 都必须设置 `turn_direction`，不检查方向<br>`false`：检查方向与几何是否一致，直行 lanelet 不要求 `straight` |
-| `only_check_AOI` | `false` | `true`：只检查完全位于地图 AOI（`subtype=AOI` 的闭合 way）内的 lanelet；地图中没有 AOI 时检查整张地图 |
+| `only_check_AOI` | `false` | `true`：只检查完全位于地图 AOI（`subtype=AOI` 的闭合 way）内的 lanelet；地图中没有 AOI 时不做任何检查，直接结束（退出码 `0`） |
 | `autoware_checking` | `false` | `true`：运行检查 3，需要 ROS |
 | `isShow` | `false` | `true`：报告结束后弹出热力图窗口（可缩放、平移，问题列表和详情，改变窗口大小不变形，见[问题热力图](#问题热力图-heatmap)），关闭窗口后程序退出；只在 `heatmap.enabled: true` 时有效，没有图形界面（如 ssh）时只输出提示 |
 | `Using_LR` | `false` | `true`：用 `model_file` 给告警打分，各检查中按分数从高到低输出；模型文件不存在时报错 |
 | `map_min_p` | `0.0` | `Using_LR` 时，p 小于它的有分数告警不在热力图上显示（点、着色、区域和弹出窗口）；报告和日志中仍然列出。`0` 为全部显示 |
 
-默认值是配置文件中缺少该项时使用的值；仓库里的 `config/config.yaml` 打开了 `log`、`heatmap`、`ignore_isolated_turns`、`only_check_AOI`、`autoware_checking` 和 `Using_LR`。
+默认值是配置文件中缺少该项时使用的值；仓库里的 `config/config.yaml` 打开了 `log`、`heatmap`、`ignore_isolated_turns`、`Using_LR` 和 `isShow`，并设置了 `map_min_p: 0.5`、`parallel_min_length: 30.0`、`parallel_min_gap: 1.8`。
 
 ## 忽略列表 `config/ignore.yaml`
 
@@ -262,33 +263,36 @@ Masque: .../logs/map_check_20261027_115711_masque.osm (10 detection_area, subtyp
 | 限制系数方向 | 加入 `NEGATIVE_FEATURES` | 方向固定，数据决定大小；数据不支持时不起作用 |
 | 改标签 | 把这类告警写进对应仓库的 ignore 文件（`config/dataset.yaml` 中的 `ignore_file`），成为 label 0 | 模型一定会学到；但如果所有这类告警都是误报，直接写成规则更简单 |
 
-目前 `traffic_light` 只有 14 个训练样本（其中 3 条被修复），降低的幅度不可靠；要让它更可靠，可以把各地图中确认不需要的红绿灯路口告警写进 ignore 文件后重新训练。
+目前 `traffic_light` 只有 18 个训练样本（其中 3 条被修复），降低的幅度不可靠；要让它更可靠，可以把各地图中确认不需要的红绿灯路口告警写进 ignore 文件后重新训练。
 
-### 当前效果（2026-10-15，10 个仓库、256 个地图版本）
+### 当前效果（`config/model.yaml`，2026-10-30 训练，12 个仓库）
 
-评估用 leave-one-map-out：每次留出一个仓库，用其他仓库训练后给它打分，相当于在一张新地图上的效果。AUC 是随机取一条真问题和一条误报、真问题得分更高的概率，0.5 等于乱猜。
+评估用 leave-one-map-out：每次留出一个仓库，用其他仓库训练后给它打分，相当于在一张新地图上的效果。AUC 是随机取一条真问题和一条误报、真问题得分更高的概率，0.5 等于乱猜。作为对比，单个特征的 AUC 也同样只用其他仓库选出最好的一个特征及其方向，再给留出的仓库排序。表中为各仓库的平均值。
 
-| 检查项 | 训练样本 | 模型 AUC | 最好的单个特征 AUC |
+| 检查项 | 有 label 的样本 | 模型 AUC | 最好的单个特征 AUC |
 |---|---|---|---|
-| turn_direction | 632（218 条修复） | 0.77 | 0.72（`isolated`） |
-| right_of_way | 359（105 条修复） | 0.72 | 0.62 |
+| turn_direction | 453（213 条修复），6 个仓库 | 0.73 | 0.47 |
+| right_of_way | 353（129 条修复），4 个仓库 | 0.65 | 0.64 |
+
+turn_direction：单个特征换到一张新地图上不起作用（0.47），模型明显更好；right_of_way：模型与只按重叠面积排序差不多（0.65 / 0.64）。以 `p < 0.5` 当作误报：turn_direction 的 240 条误报中识别出 103 条，213 条真问题中 43 条被打了低分；right_of_way 的 224 条误报中识别出 132 条，129 条真问题中 35 条被打了低分。
 
 `train_model.py` 会输出每个仓库的结果和模型系数，重新训练后以它的输出为准。
 
-模型学到的规律：
+模型学到的规律（括号中为标准化系数，正数表示更可能是真问题）：
 
 - **turn_direction**：
-  - 没有路口的告警（`isolated`）最不会被修，是最有用的特征；把边缘相碰排除在交叉之外后，模型 AUC 从 0.70 提高到 0.77。
-  - 与其他 lanelet 交叉越多，越不会被修，即团队通常不给相交的直行 lanelet 标 `straight`。
-  - 重叠越长越不会被修：buc、cern 中未修的告警有一半以上重叠超过 15 m，修复了的只有 2%~11%；重叠 30 m 时 odds 约为 5 m 时的 0.77 倍。
-  - 红绿灯路口的 odds 约为其他的 0.26 倍（平均 p 从 0.41 降到 0.19），但只有 14 个样本。
-- **right_of_way**：重叠面积越大越会被修，面积很小的重叠多数没有处理。
+  - 没有路口的告警（`isolated`，-0.84）最不会被修，odds 约为有路口时的 0.08 倍。
+  - 与其他 lanelet 交叉越多越不会被修（`n_crossing`，-0.61，每多一条交叉 odds 约乘 0.6），即团队通常不给相交的直行 lanelet 标 `straight`。
+  - 弯道比直行更会被修（`curve`，+0.32）。
+  - 红绿灯路口的告警 odds 约为其他的 0.15 倍（`traffic_light`，-0.37），但只有 18 个样本。
+  - 重叠长度（`log_overlap_length`）已不起作用，系数停在 0：长条形的平行重叠已由 `parallel_min_length` / `parallel_min_gap` 直接排除，剩下的数据不支持用它降低 p。
+- **right_of_way**：重叠面积越大越会被修（`log_area`，+0.91），面积很小的重叠多数没有处理；涉及转弯的 lanelet 对也更会被修（`max_abs_angle`，+0.34）。
 
 ### 局限
 
 - label 表示 "地图团队之后是否修复了它"，学到的是团队的习惯，不等于 Autoware 是否需要。例如 Autoware 要求路由图中有冲突的直行 lanelet 也设置 `turn_direction`，但模型会给这类告警较低的分数。
-- right_of_way 只有 3 个仓库可以评估，结果不稳定。
-- 正在修改中的地图（如 Noisy-le-Roi）里 "一直没修" 的告警可能只是还没修到，label 0 不可靠；该仓库 turn_direction 的 AUC 只有 0.56。它的样本最多（278 条），也拖低了其他地图的效果。
+- right_of_way 只有 4 个仓库可以评估（le_plessis_trevise 只有一种 label，不参与），各仓库的 AUC 在 0.57~0.68 之间，结果不稳定。
+- 正在修改中的地图（如 Noisy-le-Roi）里 "一直没修" 的告警可能只是还没修到，label 0 不可靠；该仓库 turn_direction 的 AUC 只有 0.47。它的样本最多（228 条，占一半），也拖低了其他地图的效果。
 - 发现的规律如果足够明确，更好的做法是把它变成规则或阈值，而不是一直依赖模型。例如平行车道：right_of_way 模型没有描述它的特征，长条形的重叠面积大，反而得到较高的 p；现在已由 `parallel_min_length` / `parallel_min_gap` 直接排除，同向弯道的边缘相碰仍留给模型。
 
 ## 扩展检查 (`ext/`)
@@ -301,6 +305,7 @@ Masque: .../logs/map_check_20261027_115711_masque.osm (10 detection_area, subtyp
 | [border_sharing](../ext/border_sharing/README.md) | 并排的车道是否共用中间的边界线；位置重合但各画一条（不同的 way）时报 WARNING，此时不能换道，对向车道之间可能有缝或重叠 |
 | [crosswalk](../ext/crosswalk/README.md) | crosswalk 在横向上最多超出道路多少，超出 `max_extension` 时报 WARNING |
 | [stopline](../ext/stopline/README.md) | 停止线是否只由两个点组成（一条直线而不是折线），多于 2 个点时报 WARNING |
+| [trafficlight](../ext/trafficlight/README.md) | 红绿灯能否被 Autoware 的 traffic_light 模块和相机匹配使用：灯画反或在停止线后面导致车道上认不出任何灯（车永远不走）、停止线不穿过车道（红灯不停）、一个灯属于多个规则元素、停止线延长后穿过别的同向车道、灯高和灯泡位置 |
 
 **新增扩展检查**：复制模板 `cp -r ext/_template ext/<名称>`，只需写一个 `check(ctx, cfg, out)` 函数；地图读取、配置、忽略列表、日志和热力图都由框架处理。`ctx` 中有地图文件的全部信息（所有节点、way、relation 的标签和几何）和共享的计算结果（如 lanelet 重叠、前后继关系），不用改地图读取代码，也不用重复计算。步骤和接口见 [ext/README.md](../ext/README.md)。`python3 -m unittest discover -s tests` 会自动加载 `ext/` 下的每个扩展，在一张合成地图上运行一次。
 
@@ -323,6 +328,7 @@ MapChecker/
     border_sharing/           并排的车道是否共用边界线
     crosswalk/                crosswalk 在横向上最多超出道路多少
     stopline/                 停止线是否为两点直线
+    trafficlight/             红绿灯能否被 Autoware 和相机匹配使用
   tests/                      测试 (python3 -m unittest discover -s tests)
   config/
     config.yaml               检查配置
@@ -347,6 +353,7 @@ MapChecker/
     printer.py                终端 / 日志输出
     heatmap.py                问题热力图和问题频发的区域
     heatmap_window.py         热力图窗口 (Tk 图形界面)
+    masque.py                 由问题频发区域生成减速 masque
     build_dataset.py          从地图仓库的 git 历史生成训练数据
     tranning.py               训练 logistic regression
   libs/                       install.sh 安装的第三方库 (不提交)

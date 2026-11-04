@@ -6,13 +6,42 @@
 
 ## [未发布]
 
+## [3.3.0] - 2026-11-04
+
 ### 新增
 
 - **减速 masque**（`masque.enabled`，默认 false，命令行 `--[no-]masque`）：热力图开启时，把 Hotspots 中的每个区域写成一块 `detection_area`（包含问题点的最小矩形，四周加宽 `margin`），输出到日志目录的 `<日志名>_masque.osm`，格式与 `masque_lanelet2.osm` 相同（`subtype`、`area=yes`、`height`、`slow_down_speed`，节点带 lat/lon、`local_x` / `local_y`、`ele`）。见 [README](README.zh.md#减速-masque-masque)。
 - **`map_min_p`**（默认 0，命令行 `--map-min-p`）：`Using_LR` 时，p 低于它的有分数告警不在热力图上显示（点、着色、区域和弹出窗口），报告和日志中仍然列出；Hotspots 和图的标题中注明隐藏的条数。
 - **扩展 `border_sharing`**：检查并排的车辆 lanelet 是否共用中间的边界线。面对面的两条边界位置重合（相距 ≤ `max_distance`，沿较短边界的 ≥ `min_fraction`）但是不同的 way 时报 WARNING，并给出两条车道之间是缝隙还是重叠：同向时路由图不认为相邻、不能换道，对向时应共用一条中心线。对向车道各画一条中心线、互相重叠，正是检查 2 中一部分 "crossing overlap without right_of_way" 的根源（如 cern 5353/9684）。见 [ext/border_sharing/README.md](../ext/border_sharing/README.md)。
-- **热力图窗口中按图例逐个跳转**：单击图例中的一项（某个检查项、`ERROR` 或 `hotspot`），视角移到该类的下一个问题并显示其信息；再单击跳到下一个，循环；工具栏的后退按钮回到上一个视角。
+- **扩展 `trafficlight`**：按 Autoware 的 traffic_light 模块和相机匹配（`milla_traffic_light_matching`）使用红绿灯的方式，检查 `subtype=traffic_light` 的规则元素：灯画反或在停止线后面，使车道上认不出任何灯（车在绿灯前一直不走）；停止线不穿过车道（红灯不停）；一个灯属于多个规则元素；停止线两端各延长 `stop_line_extend_length` 后穿过别的同向车道（在别的车道上停车）；以及灯高和灯泡的位置。起因是 2026-10-29 velizy 地图上的一次实车问题。见 [ext/trafficlight/README.md](../ext/trafficlight/README.md)。
+
+### 变更
+
+- **热力图窗口改为图形界面**（`isShow`）：窗口改用 Tk 构建，左侧为地图，右侧为侧栏（问题统计、色标、图层开关、按编号跳转到 lanelet、问题列表、选中项的详情）。地图始终保持 1:1 比例并占满区域，改变窗口大小时不再被压到一边，色标和图例也不再脱离或遮挡地图；拖动平移、滚轮缩放，拖动时直接移动已画好的地图，不再每次重画。问题列表（单击或 ↑ / ↓ 逐个跳转）代替了原来的单击图例逐个跳转，详情栏代替了原来在终端输出的日志行。此时扩展检查的 pyplot 窗口（如 altitude 的 `isShow`）使用 TkAgg 后端，与热力图窗口一起显示。界面为浅色卡片式布局（与图表相同的配色）：顶部标题栏，侧栏中有统计卡片、可折叠的图例（单击图层行显示 / 隐藏）、列表和详情（日志行用等宽字体，只有 `[WARNING]` / `[ERROR]` 前缀着色）。保存的 `.png` 不变。见 [README](README.zh.md#问题热力图-heatmap)。
+- **打分模型重新训练**（`config/model.yaml`，2026-10-30，12 个地图仓库）：leave-one-map-out AUC 为 turn_direction 0.73、right_of_way 0.65。排除平行车道之后，`log_overlap_length`（重叠长度）的系数停在 0，不再降低 p。见 [README](README.zh.md#告警打分-using_lr)。
+
+## [3.2.0] - 2026-10-23
+
+### 新增
+
+- **热力图窗口中按图例逐个跳转**：单击图例中的一项（某个检查项、`ERROR` 或 `hotspot`），视角移到该类的下一个问题并显示其信息；再单击跳到下一个，循环；工具栏的后退按钮回到上一个视角。 3.3.0 中由热力图窗口的问题列表代替。
 - **扩展 `stopline`**：检查停止线（`type=stop_line` 的 way）是否只由两个点组成；多于 2 个点（折线）时报 WARNING，并给出中间节点离两端连线的距离；少于 2 个点或引用了不存在的节点时报 ERROR。见 [ext/stopline/README.md](../ext/stopline/README.md)。
+
+### 变更
+
+- 热力图：所有检查（包括扩展检查）的 ERROR 用红色的点标出，画在 WARNING 点之上，图例中单独列出条数。
+- README 默认改为法语（`README.md`），中文版移到 [doc/README.zh.md](README.zh.md)。
+- **平行车道不算重叠**（`parallel_min_length` 默认 10 m、`parallel_min_gap` 默认 1.5 m，命令行 `--parallel-min-length` / `--parallel-min-gap`）：两条都是直行、或方向相反（如弯道上的双向车道）的 lanelet，重叠长度 ≥ `parallel_min_length`、且沿重叠段两条中心线始终相距 ≥ `parallel_min_gap` 的，不再算重叠。狭窄或变窄的道路上沿路重叠的车道（如对向车道画得过宽），以前在检查 2 中被报成 "crossing overlap without right_of_way"，而且因为面积大反而 p 较高，在检查 1 中被报成 "intersects other lanes"；现在两项检查都不再报告。中心线会合的汇入 / 交叉，以及同向的弯道并排，不受影响。打分模型已按新规则重新训练。
+
+### 修复
+
+- 末尾的忽略列表报告中，被忽略的 id 不是 lanelet、但确实屏蔽了问题时（如 stopline 的停止线 way id），显示为 `way <id> ... N issue(s) suppressed`，不再误报为 `not found in map`。
+- 热力图：没有给出坐标的问题取相关 lanelet 中点的平均位置，相关 lanelet 相距很远时会落在无关的地方，例如 right_of_way 引用了另一个路口的 lanelet 时被画在地图正中。现在相距超过 `heatmap.radius` 时改用第一条 lanelet 的位置；检查 2 的 "do not overlap at all" 画在引用该规则元素的 lanelet 上。
+
+## [3.1.0] - 2026-10-21
+
+### 新增
+
 - **扩展 `altitude`**：检查车道边界上高程 `ele` 的突兀点（跳变、尖峰、横坡过大、没有 `ele`），并在日志目录生成高程趋势图 `<日志名>_altitude.png`，见 [ext/altitude/README.md](../ext/altitude/README.md)。
 - **altitude 的交互窗口**：配置中 `isShow: true` 时，报告结束后弹出独立的高程俯视图窗口；单击突兀点或 lanelet 时，在另一个小窗口中显示其纵断面和细节。
 - **地图的全部信息**：`ctx.nodes` / `ctx.ways` / `ctx.relations` / `ctx.map` 提供地图文件中的所有节点、way、relation（全部标签、XML 属性和成员）以及 `MetaInfo`，新扩展不需要修改地图读取代码，见 [ext/README.md](../ext/README.md)。
@@ -20,17 +49,8 @@
 
 ### 变更
 
-- **热力图窗口改为图形界面**（`isShow`）：窗口改用 Tk 构建，左侧为地图，右侧为侧栏（问题统计、色标、图层开关、按编号跳转到 lanelet、问题列表、选中项的详情）。地图始终保持 1:1 比例并占满区域，改变窗口大小时不再被压到一边，色标和图例也不再脱离或遮挡地图；拖动平移、滚轮缩放，拖动时直接移动已画好的地图，不再每次重画。问题列表（单击或 ↑ / ↓ 逐个跳转）代替了原来的单击图例逐个跳转，详情栏代替了原来在终端输出的日志行。此时扩展检查的 pyplot 窗口（如 altitude 的 `isShow`）使用 TkAgg 后端，与热力图窗口一起显示。界面为浅色卡片式布局（与图表相同的配色）：顶部标题栏，侧栏中有统计卡片、可折叠的图例（单击图层行显示 / 隐藏）、列表和详情（日志行用等宽字体，只有 `[WARNING]` / `[ERROR]` 前缀着色）。保存的 `.png` 不变。见 [README](README.zh.md#问题热力图-heatmap)。
-- 热力图：所有检查（包括扩展检查）的 ERROR 用红色的点标出，画在 WARNING 点之上，图例中单独列出条数。
-- README 默认改为法语（`README.md`），中文版移到 [doc/README.zh.md](README.zh.md)。
-- **平行车道不算重叠**（`parallel_min_length` 默认 10 m、`parallel_min_gap` 默认 1.5 m，命令行 `--parallel-min-length` / `--parallel-min-gap`）：两条都是直行、或方向相反（如弯道上的双向车道）的 lanelet，重叠长度 ≥ `parallel_min_length`、且沿重叠段两条中心线始终相距 ≥ `parallel_min_gap` 的，不再算重叠。狭窄或变窄的道路上沿路重叠的车道（如对向车道画得过宽），以前在检查 2 中被报成 "crossing overlap without right_of_way"，而且因为面积大反而 p 较高，在检查 1 中被报成 "intersects other lanes"；现在两项检查都不再报告。中心线会合的汇入 / 交叉，以及同向的弯道并排，不受影响。打分模型已按新规则重新训练。
 - 结构不完整的 lanelet（左 / 右边界不正好各一条，或引用了不存在的 way / 节点）以前被悄悄跳过或导致程序崩溃，现在在报告开头列出 `Lanelets not loaded (incomplete, not checked): ...`。
 - **不兼容**：`utils.lanelet_map.load_map()` 返回 `LaneletMap`（原来是 `(lanelets, reg_elems, aois)`），`MapContext(lanelet_map, opts, ...)` 的参数随之改变；`utils.heatmap.show_heatmap()` 改名为 `show_windows()`。只通过 `ctx` 使用地图的检查和扩展不受影响。
-
-### 修复
-
-- 末尾的忽略列表报告中，被忽略的 id 不是 lanelet、但确实屏蔽了问题时（如 stopline 的停止线 way id），显示为 `way <id> ... N issue(s) suppressed`，不再误报为 `not found in map`。
-- 热力图：没有给出坐标的问题取相关 lanelet 中点的平均位置，相关 lanelet 相距很远时会落在无关的地方，例如 right_of_way 引用了另一个路口的 lanelet 时被画在地图正中。现在相距超过 `heatmap.radius` 时改用第一条 lanelet 的位置；检查 2 的 "do not overlap at all" 画在引用该规则元素的 lanelet 上。
 
 ## [3.0.0] - 2026-10-21
 
@@ -157,7 +177,10 @@
   - 退出码：`0` 没有问题，`1` 有问题。
 - **`validate_autoware_map.py`**：`autoware_lanelet2_validation` 的 Python 版，需要 ROS，可单独运行。
 
-[未发布]: https://github.com/Edouard-ZHOU-fr/MapChecker/compare/3.0.0...HEAD
+[未发布]: https://github.com/Edouard-ZHOU-fr/MapChecker/compare/3.3.0...HEAD
+[3.3.0]: https://github.com/Edouard-ZHOU-fr/MapChecker/compare/3.2.0...3.3.0
+[3.2.0]: https://github.com/Edouard-ZHOU-fr/MapChecker/compare/3.1.0...3.2.0
+[3.1.0]: https://github.com/Edouard-ZHOU-fr/MapChecker/compare/3.0.0...3.1.0
 [3.0.0]: https://github.com/Edouard-ZHOU-fr/MapChecker/compare/2.1.1...3.0.0
 [2.1.1]: https://github.com/Edouard-ZHOU-fr/MapChecker/compare/2.1.0...2.1.1
 [2.1.0]: https://github.com/Edouard-ZHOU-fr/MapChecker/compare/2.0.0...2.1.0

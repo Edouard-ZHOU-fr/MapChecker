@@ -6,13 +6,42 @@ Ce fichier recense les principales évolutions de chaque version de MapChecker, 
 
 ## [Non publié]
 
+## [3.3.0] - 2026-11-04
+
 ### Ajouté
 
 - **Masque de ralentissement** (`masque.enabled`, false par défaut, en ligne de commande `--[no-]masque`) : avec la carte de chaleur, chaque zone des Hotspots est écrite comme une `detection_area` (le plus petit rectangle contenant ses problèmes, agrandi de `margin`) dans `<nom du log>_masque.osm` du répertoire des logs, au même format que `masque_lanelet2.osm` (`subtype`, `area=yes`, `height`, `slow_down_speed`, nœuds avec lat/lon, `local_x` / `local_y`, `ele`). Voir le [README](../README.md#masque-de-ralentissement-masque).
 - **`map_min_p`** (0 par défaut, en ligne de commande `--map-min-p`) : avec `Using_LR`, les alertes notées dont le p est inférieur ne sont pas affichées sur la carte de chaleur (points, coloration, zones, fenêtre) ; le rapport et le log les listent toujours ; les Hotspots et le titre de la figure indiquent combien sont masquées.
 - **Extension `border_sharing`** : vérifie que des lanelets véhicule côte à côte partagent la bordure entre elles. Si les deux bordures en vis-à-vis coïncident (distance ≤ `max_distance`, sur ≥ `min_fraction` de la plus courte) mais sont des ways différents, WARNING avec l'interstice ou le chevauchement entre les voies : dans le même sens, elles ne sont pas adjacentes dans le graphe de routage et le changement de voie est impossible ; en sens opposés, elles devraient partager une seule ligne centrale. Des voies opposées dessinées chacune avec sa propre ligne centrale et qui se chevauchent sont justement à l'origine d'une partie des « crossing overlap without right_of_way » de la vérification 2 (par exemple 5353/9684 dans cern). Voir [ext/border_sharing/README.md](../ext/border_sharing/README.md).
-- **Navigation par la légende dans la fenêtre de la carte de chaleur** : un clic sur une entrée de la légende (une vérification, `ERROR` ou `hotspot`) déplace la vue sur le problème suivant de cette catégorie et affiche ses informations ; chaque clic passe au suivant, en boucle ; le bouton précédent de la barre d'outils revient à la vue précédente.
+- **Extension `trafficlight`** : vérifie les éléments de régulation `subtype=traffic_light` tels que les utilisent le module traffic_light d'Autoware et l'appariement caméra (`milla_traffic_light_matching`) : feu dessiné à l'envers ou derrière la ligne d'arrêt, si bien qu'aucun feu n'est reconnu sur la voie (le véhicule ne repart jamais au vert) ; ligne d'arrêt qui ne traverse pas la voie (pas d'arrêt au rouge) ; feu appartenant à plusieurs éléments de régulation ; ligne d'arrêt qui, prolongée de `stop_line_extend_length` à chaque bout, traverse une autre voie de même sens (arrêt sur une autre voie) ; hauteur du feu et position des ampoules. À l'origine : un problème en véhicule réel sur la carte de velizy le 2026-10-29. Voir [ext/trafficlight/README.md](../ext/trafficlight/README.md).
+
+### Modifié
+
+- **Fenêtre de la carte de chaleur en interface graphique** (`isShow`) : la fenêtre est construite avec Tk, la carte à gauche et un panneau latéral à droite (nombre de problèmes, échelle de couleurs, couches, aller à une lanelet par son numéro, liste des problèmes, détails de la sélection). La carte garde une échelle 1:1 et remplit sa zone : redimensionner la fenêtre ne la repousse plus sur un côté, et l'échelle de couleurs et la légende ne s'en détachent plus ni ne la recouvrent. Glisser pour déplacer, molette pour zoomer ; pendant un glisser, la carte déjà dessinée est déplacée au lieu d'être redessinée. La liste des problèmes (clic ou ↑ / ↓) remplace le clic sur la légende pour aller d'un problème à l'autre, et le panneau de détails remplace les lignes du log affichées dans le terminal. Les fenêtres pyplot des extensions (par exemple `isShow` d'altitude) utilisent alors le backend TkAgg et s'affichent avec la fenêtre de la carte de chaleur. L'interface est faite de cartes sur fond clair (les couleurs des graphiques) : barre de titre, chiffres clés, légende repliable (un clic sur une couche la masque / l'affiche), liste et détails (lignes du log en police à chasse fixe, seul le préfixe `[WARNING]` / `[ERROR]` en couleur). Le `.png` enregistré ne change pas. Voir le [README](../README.md#carte-de-chaleur-des-problèmes-heatmap).
+- **Modèle de notation réentraîné** (`config/model.yaml`, 2026-10-30, 12 dépôts de cartes) : AUC leave-one-map-out de 0.73 pour turn_direction et 0.65 pour right_of_way. Depuis l'exclusion des voies parallèles, le coefficient de `log_overlap_length` (longueur de chevauchement) est à 0 et ne baisse plus p. Voir le [README](../README.md#notation-des-alertes-using_lr).
+
+## [3.2.0] - 2026-10-23
+
+### Ajouté
+
+- **Navigation par la légende dans la fenêtre de la carte de chaleur** : un clic sur une entrée de la légende (une vérification, `ERROR` ou `hotspot`) déplace la vue sur le problème suivant de cette catégorie et affiche ses informations ; chaque clic passe au suivant, en boucle ; le bouton précédent de la barre d'outils revient à la vue précédente. Remplacée en 3.3.0 par la liste des problèmes de la fenêtre.
 - **Extension `stopline`** : vérifie qu'une ligne d'arrêt (way avec `type=stop_line`) n'est formée que de deux points ; au-delà de 2 points (ligne brisée), WARNING avec la distance du point intermédiaire à la droite reliant les deux extrémités ; moins de 2 points ou nœud inexistant : ERROR. Voir [ext/stopline/README.md](../ext/stopline/README.md).
+
+### Modifié
+
+- Carte de chaleur : les ERROR de toutes les vérifications (extensions comprises) sont marquées par des points rouges, dessinés au-dessus des points de WARNING, avec leur nombre dans la légende.
+- Le README est désormais en français par défaut (`README.md`), la version chinoise est déplacée dans [doc/README.zh.md](README.zh.md).
+- **Les voies parallèles ne comptent pas comme chevauchement** (`parallel_min_length` 10 m par défaut, `parallel_min_gap` 1.5 m par défaut, en ligne de commande `--parallel-min-length` / `--parallel-min-gap`) : deux lanelets toutes deux droites, ou de sens opposés (par exemple les deux sens d'une route dans un virage), qui se chevauchent sur une longueur ≥ `parallel_min_length` et dont les lignes centrales restent à ≥ `parallel_min_gap` l'une de l'autre le long du chevauchement ne comptent plus comme chevauchement. Les voies qui se chevauchent le long d'une route étroite ou qui se rétrécit (par exemple des voies opposées dessinées trop larges) étaient auparavant signalées par la vérification 2 comme « crossing overlap without right_of_way », avec un p plutôt élevé à cause de leur grande surface, et par la vérification 1 comme « intersects other lanes » ; elles ne sont plus signalées par aucune des deux. Les convergences / croisements dont les lignes centrales se rejoignent, ainsi que les virages de même sens qui longent une voie voisine, ne sont pas concernés. Le modèle de notation a été réentraîné avec la nouvelle règle.
+
+### Corrigé
+
+- Dans la liste des éléments ignorés en fin de rapport, un id qui n'est pas une lanelet mais qui a bien masqué des problèmes (par exemple le way d'une ligne d'arrêt pour stopline) est affiché `way <id> ... N issue(s) suppressed`, et non plus `not found in map`.
+- Carte de chaleur : un problème sans coordonnées était placé à la position moyenne des milieux des lanelets concernées, ce qui tombait dans un endroit sans rapport lorsqu'elles sont très éloignées, par exemple au milieu de la carte pour un right_of_way qui référence une lanelet d'une autre intersection. Au-delà de `heatmap.radius`, la position de la première lanelet est désormais utilisée ; le « do not overlap at all » de la vérification 2 est placé sur la lanelet qui référence l'élément de régulation.
+
+## [3.1.0] - 2026-10-21
+
+### Ajouté
+
 - **Extension `altitude`** : détecte les points anormaux de l'altitude `ele` sur les bordures de voie (sauts, pics, dévers excessif, absence de `ele`) et génère dans le répertoire des logs un graphique d'évolution de l'altitude `<nom du log>_altitude.png`, voir [ext/altitude/README.md](../ext/altitude/README.md).
 - **Fenêtre interactive d'altitude** : avec `isShow: true` dans la configuration, une fenêtre indépendante montrant l'altitude en vue de dessus s'ouvre à la fin du rapport ; un clic sur un point anormal ou sur une lanelet affiche son profil en long et ses détails dans une seconde petite fenêtre.
 - **Toutes les informations de la carte** : `ctx.nodes` / `ctx.ways` / `ctx.relations` / `ctx.map` donnent accès à tous les nœuds, ways et relations du fichier de carte (tous les tags, attributs XML et membres) ainsi qu'à `MetaInfo` ; une nouvelle extension n'a pas besoin de modifier le code de lecture de la carte, voir [ext/README.md](../ext/README.md).
@@ -20,17 +49,8 @@ Ce fichier recense les principales évolutions de chaque version de MapChecker, 
 
 ### Modifié
 
-- **Fenêtre de la carte de chaleur en interface graphique** (`isShow`) : la fenêtre est construite avec Tk, la carte à gauche et un panneau latéral à droite (nombre de problèmes, échelle de couleurs, couches, aller à une lanelet par son numéro, liste des problèmes, détails de la sélection). La carte garde une échelle 1:1 et remplit sa zone : redimensionner la fenêtre ne la repousse plus sur un côté, et l'échelle de couleurs et la légende ne s'en détachent plus ni ne la recouvrent. Glisser pour déplacer, molette pour zoomer ; pendant un glisser, la carte déjà dessinée est déplacée au lieu d'être redessinée. La liste des problèmes (clic ou ↑ / ↓) remplace le clic sur la légende pour aller d'un problème à l'autre, et le panneau de détails remplace les lignes du log affichées dans le terminal. Les fenêtres pyplot des extensions (par exemple `isShow` d'altitude) utilisent alors le backend TkAgg et s'affichent avec la fenêtre de la carte de chaleur. L'interface est faite de cartes sur fond clair (les couleurs des graphiques) : barre de titre, chiffres clés, légende repliable (un clic sur une couche la masque / l'affiche), liste et détails (lignes du log en police à chasse fixe, seul le préfixe `[WARNING]` / `[ERROR]` en couleur). Le `.png` enregistré ne change pas. Voir le [README](../README.md#carte-de-chaleur-des-problèmes-heatmap).
-- Carte de chaleur : les ERROR de toutes les vérifications (extensions comprises) sont marquées par des points rouges, dessinés au-dessus des points de WARNING, avec leur nombre dans la légende.
-- Le README est désormais en français par défaut (`README.md`), la version chinoise est déplacée dans [doc/README.zh.md](README.zh.md).
-- **Les voies parallèles ne comptent pas comme chevauchement** (`parallel_min_length` 10 m par défaut, `parallel_min_gap` 1.5 m par défaut, en ligne de commande `--parallel-min-length` / `--parallel-min-gap`) : deux lanelets toutes deux droites, ou de sens opposés (par exemple les deux sens d'une route dans un virage), qui se chevauchent sur une longueur ≥ `parallel_min_length` et dont les lignes centrales restent à ≥ `parallel_min_gap` l'une de l'autre le long du chevauchement ne comptent plus comme chevauchement. Les voies qui se chevauchent le long d'une route étroite ou qui se rétrécit (par exemple des voies opposées dessinées trop larges) étaient auparavant signalées par la vérification 2 comme « crossing overlap without right_of_way », avec un p plutôt élevé à cause de leur grande surface, et par la vérification 1 comme « intersects other lanes » ; elles ne sont plus signalées par aucune des deux. Les convergences / croisements dont les lignes centrales se rejoignent, ainsi que les virages de même sens qui longent une voie voisine, ne sont pas concernés. Le modèle de notation a été réentraîné avec la nouvelle règle.
 - Les lanelets à la structure incomplète (pas exactement une bordure gauche et une bordure droite, ou référence à un way / nœud inexistant) étaient auparavant ignorées silencieusement ou faisaient planter le programme ; elles sont désormais listées au début du rapport : `Lanelets not loaded (incomplete, not checked): ...`.
 - **Incompatible** : `utils.lanelet_map.load_map()` renvoie un `LaneletMap` (auparavant `(lanelets, reg_elems, aois)`), et les paramètres de `MapContext(lanelet_map, opts, ...)` changent en conséquence ; `utils.heatmap.show_heatmap()` est renommée `show_windows()`. Les vérifications et extensions qui n'accèdent à la carte que via `ctx` ne sont pas concernées.
-
-### Corrigé
-
-- Dans la liste des éléments ignorés en fin de rapport, un id qui n'est pas une lanelet mais qui a bien masqué des problèmes (par exemple le way d'une ligne d'arrêt pour stopline) est affiché `way <id> ... N issue(s) suppressed`, et non plus `not found in map`.
-- Carte de chaleur : un problème sans coordonnées était placé à la position moyenne des milieux des lanelets concernées, ce qui tombait dans un endroit sans rapport lorsqu'elles sont très éloignées, par exemple au milieu de la carte pour un right_of_way qui référence une lanelet d'une autre intersection. Au-delà de `heatmap.radius`, la position de la première lanelet est désormais utilisée ; le « do not overlap at all » de la vérification 2 est placé sur la lanelet qui référence l'élément de régulation.
 
 ## [3.0.0] - 2026-10-21
 
@@ -157,7 +177,10 @@ Première version.
   - Code de sortie : `0` aucun problème, `1` des problèmes.
 - **`validate_autoware_map.py`** : version Python de `autoware_lanelet2_validation`, nécessite ROS, exécutable seul.
 
-[Non publié]: https://github.com/Edouard-ZHOU-fr/MapChecker/compare/3.0.0...HEAD
+[Non publié]: https://github.com/Edouard-ZHOU-fr/MapChecker/compare/3.3.0...HEAD
+[3.3.0]: https://github.com/Edouard-ZHOU-fr/MapChecker/compare/3.2.0...3.3.0
+[3.2.0]: https://github.com/Edouard-ZHOU-fr/MapChecker/compare/3.1.0...3.2.0
+[3.1.0]: https://github.com/Edouard-ZHOU-fr/MapChecker/compare/3.0.0...3.1.0
 [3.0.0]: https://github.com/Edouard-ZHOU-fr/MapChecker/compare/2.1.1...3.0.0
 [2.1.1]: https://github.com/Edouard-ZHOU-fr/MapChecker/compare/2.1.0...2.1.1
 [2.1.0]: https://github.com/Edouard-ZHOU-fr/MapChecker/compare/2.0.0...2.1.0

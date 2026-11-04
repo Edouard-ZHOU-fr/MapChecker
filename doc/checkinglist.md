@@ -2,7 +2,7 @@
 
 中文 | [Français](checkinglist.fr.md)
 
-本文列出 `check_lanelet_map.py` 目前检查的所有项目，以及每条 WARNING / ERROR 在什么条件下输出。内容按 2026-10-30 的代码整理；文中的"当前值"取自 `config/config.yaml` 和 `ext/<名称>/config/config.yaml`，修改配置后以配置文件为准。
+本文列出 `check_lanelet_map.py` 目前检查的所有项目，以及每条 WARNING / ERROR 在什么条件下输出。内容按 3.3.0（2026-11-04）的代码整理；文中的"当前值"取自 `config/config.yaml` 和 `ext/<名称>/config/config.yaml`，修改配置后以配置文件为准。
 
 ## 总览
 
@@ -11,7 +11,7 @@
 | 1 | `turn_direction` | 车辆 lanelet | 总是运行（`--only-ext` 时跳过） | WARNING |
 | 2 | `right_of_way` | 重叠的车辆 lanelet 对、`right_of_way` 规则元素 | 总是运行（`--only-ext` 时跳过） | WARNING / ERROR |
 | 3 | `autoware` | 整个地图文件 | `autoware_checking: true`（当前 `false`），需要 source ROS | WARNING / ERROR |
-| 扩展 | `altitude` | 车辆 lanelet 边界节点的高程 `ele` | `enable: true`（当前关闭） | WARNING |
+| 扩展 | `altitude` | 车辆 lanelet 边界节点的高程 `ele` | `enable: true`（当前开启） | WARNING |
 | 扩展 | `crosswalk` | `subtype=crosswalk` 的 lanelet | `enable: true`（当前开启） | WARNING |
 | 扩展 | `stopline` | `type=stop_line` 的 way | `enable: true`（当前开启） | WARNING / ERROR |
 | 扩展 | `border_sharing` | 并排的车辆 lanelet 对 | `enable: true`（当前关闭） | WARNING |

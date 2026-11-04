@@ -21,6 +21,7 @@ Outil de vérification des cartes Lanelet2 : il repère les endroits de la carte
 |---|---|
 | Vérifications 1 et 2, notation LR | Python 3.10+, `numpy`, `PyYAML` |
 | Carte de chaleur | `matplotlib` |
+| Fenêtre de la carte de chaleur (`isShow`) | `tkinter` (`python3-tk`) |
 | Vérification 3 (Autoware) | ROS 2 Humble et `autoware_lanelet2_extension_python` ; sourcer avant l'exécution :<br>`source /opt/ros/humble/setup.bash`<br>`source ~/ros/ad_ros2_ws/install/setup.bash` |
 | Entraînement du modèle de notation | `scikit-learn` (et sa dépendance `scipy`), `git` (seulement pour `train_model.py`) ; si `autoware_checking: true` dans `config/dataset.yaml`, il faut aussi sourcer ROS |
 
@@ -91,13 +92,13 @@ Les chemins relatifs sont relatifs à `MapChecker/`.
 | `parallel_min_gap` | `1.5` | Distance minimale (m) entre les lignes centrales des voies parallèles ci-dessus ; une très grande valeur (par exemple `99`) désactive l'exclusion |
 | `ignore_isolated_turns` | `false` | `true` : le `turn_direction` des virages qui ne croisent pas d'autres voies et ne convergent pas avec elles (une divergence ne compte pas) n'est pas vérifié |
 | `straight_as_turn_light` | `true` | `true` : `straight` compte aussi comme clignotant ; les virages et les lanelets droites qui intersectent doivent avoir un `turn_direction`, la direction n'est pas vérifiée<br>`false` : vérifie que la direction correspond à la géométrie ; les lanelets droites n'ont pas à être marquées `straight` |
-| `only_check_AOI` | `false` | `true` : ne vérifie que les lanelets entièrement situées dans les AOI de la carte (way fermé `subtype=AOI`) ; si la carte n'a pas d'AOI, toute la carte est vérifiée |
+| `only_check_AOI` | `false` | `true` : ne vérifie que les lanelets entièrement situées dans les AOI de la carte (way fermé `subtype=AOI`) ; si la carte n'a pas d'AOI, aucune vérification n'est faite (code de sortie `0`) |
 | `autoware_checking` | `false` | `true` : exécute la vérification 3, nécessite ROS |
 | `isShow` | `false` | `true` : ouvre la fenêtre de la carte de chaleur à la fin du rapport (zoom, déplacement, liste des problèmes et détails, pas de déformation au redimensionnement, voir [Carte de chaleur des problèmes](#carte-de-chaleur-des-problèmes-heatmap)) ; le programme se termine à la fermeture de la fenêtre. Sans effet si `heatmap.enabled` n'est pas `true` ; sans interface graphique (par exemple en ssh), seul un message est affiché |
 | `Using_LR` | `false` | `true` : note les alertes avec `model_file` ; chaque vérification les affiche par score décroissant. Erreur si le fichier de modèle n'existe pas |
 | `map_min_p` | `0.0` | Avec `Using_LR` : les alertes notées dont le p est inférieur ne sont pas affichées sur la carte de chaleur (points, coloration, zones, fenêtre) ; le rapport et le log les listent toujours. `0` affiche tout |
 
-La valeur par défaut est celle utilisée lorsque le paramètre est absent du fichier de configuration ; le `config/config.yaml` du dépôt active `log`, `heatmap`, `ignore_isolated_turns`, `only_check_AOI`, `autoware_checking` et `Using_LR`.
+La valeur par défaut est celle utilisée lorsque le paramètre est absent du fichier de configuration ; le `config/config.yaml` du dépôt active `log`, `heatmap`, `ignore_isolated_turns`, `Using_LR` et `isShow`, et fixe `map_min_p: 0.5`, `parallel_min_length: 30.0`, `parallel_min_gap: 1.8`.
 
 ## Liste d'ignorés `config/ignore.yaml`
 
@@ -262,33 +263,36 @@ Il y a trois façons de transmettre une connaissance au modèle, avec des effets
 | Contraindre le signe du coefficient | L'ajouter à `NEGATIVE_FEATURES` | Direction fixe, les données fixent l'ampleur ; sans effet si les données ne la confirment pas |
 | Modifier les labels | Écrire ces alertes dans le fichier ignore du dépôt correspondant (`ignore_file` dans `config/dataset.yaml`) pour qu'elles deviennent label 0 | Le modèle l'apprendra forcément ; mais si toutes ces alertes sont des faux positifs, il est plus simple d'en faire directement une règle |
 
-Pour l'instant, `traffic_light` n'a que 14 échantillons d'entraînement (dont 3 corrigés) et l'ampleur de la baisse n'est pas fiable ; pour la fiabiliser, on peut écrire dans les fichiers ignore les alertes d'intersections à feux confirmées inutiles dans chaque carte, puis réentraîner.
+Pour l'instant, `traffic_light` n'a que 18 échantillons d'entraînement (dont 3 corrigés) et l'ampleur de la baisse n'est pas fiable ; pour la fiabiliser, on peut écrire dans les fichiers ignore les alertes d'intersections à feux confirmées inutiles dans chaque carte, puis réentraîner.
 
-### Performances actuelles (2026-10-15, 10 dépôts, 256 versions de carte)
+### Performances actuelles (`config/model.yaml`, entraîné le 2026-10-30, 12 dépôts)
 
-L'évaluation se fait en leave-one-map-out : à chaque fois, un dépôt est mis de côté, le modèle est entraîné sur les autres puis note ce dépôt, ce qui équivaut aux performances sur une nouvelle carte. L'AUC est la probabilité qu'en tirant au hasard un vrai problème et un faux positif, le vrai problème ait le score le plus élevé ; 0.5 équivaut au hasard.
+L'évaluation se fait en leave-one-map-out : à chaque fois, un dépôt est mis de côté, le modèle est entraîné sur les autres puis note ce dépôt, ce qui équivaut aux performances sur une nouvelle carte. L'AUC est la probabilité qu'en tirant au hasard un vrai problème et un faux positif, le vrai problème ait le score le plus élevé ; 0.5 équivaut au hasard. En comparaison, la meilleure caractéristique seule et son sens sont choisis de la même façon sur les autres dépôts uniquement, puis servent à classer le dépôt mis de côté. Le tableau donne la moyenne des dépôts.
 
-| Vérification | Échantillons d'entraînement | AUC du modèle | Meilleure AUC d'une caractéristique seule |
+| Vérification | Échantillons étiquetés | AUC du modèle | Meilleure AUC d'une caractéristique seule |
 |---|---|---|---|
-| turn_direction | 632 (218 corrigés) | 0.77 | 0.72 (`isolated`) |
-| right_of_way | 359 (105 corrigés) | 0.72 | 0.62 |
+| turn_direction | 453 (213 corrigés), 6 dépôts | 0.73 | 0.47 |
+| right_of_way | 353 (129 corrigés), 4 dépôts | 0.65 | 0.64 |
+
+Pour turn_direction, une caractéristique seule ne se transpose pas à une nouvelle carte (0.47) et le modèle fait nettement mieux ; pour right_of_way, le modèle fait à peu près comme un simple classement par surface de chevauchement (0.65 / 0.64). En prenant `p < 0.5` comme faux positif : turn_direction repère 103 des 240 faux positifs et note bas 43 des 213 vrais problèmes ; right_of_way repère 132 des 224 faux positifs et note bas 35 des 129 vrais problèmes.
 
 `train_model.py` affiche les résultats par dépôt et les coefficients du modèle ; après un nouvel entraînement, c'est sa sortie qui fait foi.
 
-Ce que le modèle a appris :
+Ce que le modèle a appris (entre parenthèses, le coefficient standardisé ; positif = plus probablement un vrai problème) :
 
 - **turn_direction** :
-  - Les alertes sans intersection (`isolated`) sont les moins souvent corrigées ; c'est la caractéristique la plus utile. Après avoir exclu les contacts de bord des croisements, l'AUC du modèle est passée de 0.70 à 0.77.
-  - Plus une lanelet croise d'autres lanelets, moins elle est corrigée : l'équipe ne marque généralement pas `straight` les lanelets droites qui intersectent.
-  - Plus le chevauchement est long, moins l'alerte est corrigée : dans buc et cern, plus de la moitié des alertes non corrigées ont un chevauchement de plus de 15 m, contre seulement 2 à 11 % des alertes corrigées ; à 30 m de chevauchement, l'odds vaut environ 0.77 fois celui à 5 m.
-  - Aux intersections avec feux, l'odds vaut environ 0.26 fois celui des autres (p moyen de 0.41 à 0.19), mais sur seulement 14 échantillons.
-- **right_of_way** : plus la surface de chevauchement est grande, plus l'alerte est corrigée ; la plupart des très petits chevauchements ne sont pas traités.
+  - Les alertes sans intersection (`isolated`, -0.84) sont les moins souvent corrigées : leur odds vaut environ 0.08 fois celui des alertes à une intersection.
+  - Plus une lanelet croise d'autres lanelets, moins elle est corrigée (`n_crossing`, -0.61 ; chaque croisement de plus multiplie l'odds par environ 0.6) : l'équipe ne marque généralement pas `straight` les lanelets droites qui intersectent.
+  - Les virages sont plus souvent corrigés que les lignes droites (`curve`, +0.32).
+  - Aux intersections avec feux, l'odds vaut environ 0.15 fois celui des autres (`traffic_light`, -0.37), mais sur seulement 18 échantillons.
+  - La longueur de chevauchement (`log_overlap_length`) ne joue plus : son coefficient est à 0. Les longs chevauchements de voies parallèles sont désormais exclus directement par `parallel_min_length` / `parallel_min_gap`, et les données restantes ne justifient plus de baisser p avec elle.
+- **right_of_way** : plus la surface de chevauchement est grande, plus l'alerte est corrigée (`log_area`, +0.91) ; la plupart des très petits chevauchements ne sont pas traités. Les paires impliquant un virage sont aussi plus souvent corrigées (`max_abs_angle`, +0.34).
 
 ### Limites
 
 - Le label signifie « l'équipe cartographie l'a-t-elle corrigée par la suite » : le modèle apprend les habitudes de l'équipe, pas ce dont Autoware a besoin. Par exemple, Autoware exige un `turn_direction` sur les lanelets droites en conflit dans le graphe de routage, mais le modèle donne à ces alertes un score plutôt bas.
-- Seuls 3 dépôts permettent d'évaluer right_of_way, les résultats sont instables.
-- Dans une carte en cours de modification (comme Noisy-le-Roi), une alerte « jamais corrigée » peut simplement ne pas encore l'avoir été, et le label 0 n'est pas fiable ; l'AUC turn_direction de ce dépôt n'est que de 0.56. C'est aussi le dépôt qui a le plus d'échantillons (278), ce qui dégrade les performances sur les autres cartes.
+- Seuls 4 dépôts permettent d'évaluer right_of_way (le_plessis_trevise n'a qu'un seul label et n'y participe pas), avec des AUC de 0.57 à 0.68 selon le dépôt : les résultats sont instables.
+- Dans une carte en cours de modification (comme Noisy-le-Roi), une alerte « jamais corrigée » peut simplement ne pas encore l'avoir été, et le label 0 n'est pas fiable ; l'AUC turn_direction de ce dépôt n'est que de 0.47. C'est aussi le dépôt qui a le plus d'échantillons (228, la moitié du total), ce qui dégrade les performances sur les autres cartes.
 - Quand une régularité découverte est assez nette, mieux vaut la transformer en règle ou en seuil que dépendre indéfiniment du modèle. Par exemple les voies parallèles : le modèle right_of_way n'a aucune caractéristique qui les décrit, et ces longs chevauchements, de grande surface, obtenaient au contraire un p élevé ; ils sont désormais exclus directement par `parallel_min_length` / `parallel_min_gap`, les contacts de bord des virages de même sens restant confiés au modèle.
 
 ## Extensions (`ext/`)
@@ -301,6 +305,7 @@ Chaque sous-répertoire de `ext/` est une extension indépendante, avec son prop
 | [border_sharing](ext/border_sharing/README.md) | Des voies côte à côte partagent-elles la bordure entre elles ; WARNING si les deux bordures coïncident mais sont des ways différents (pas de changement de voie possible, interstice ou chevauchement entre voies opposées) |
 | [crosswalk](ext/crosswalk/README.md) | De combien un passage piéton dépasse au plus latéralement de la route ; WARNING au-delà de `max_extension` |
 | [stopline](ext/stopline/README.md) | Une ligne d'arrêt est-elle formée de deux points seulement (une droite et non une ligne brisée) ; WARNING au-delà de 2 points |
+| [trafficlight](ext/trafficlight/README.md) | Les feux sont-ils utilisables par le module traffic_light d'Autoware et l'appariement caméra : feu dessiné à l'envers ou derrière la ligne d'arrêt, si bien qu'aucun feu n'est reconnu sur la voie (le véhicule ne repart jamais), ligne d'arrêt qui ne traverse pas la voie (pas d'arrêt au rouge), feu appartenant à plusieurs éléments de régulation, ligne d'arrêt prolongée qui traverse une autre voie de même sens, hauteur du feu et position des ampoules |
 
 **Ajouter une extension** : copier le modèle `cp -r ext/_template ext/<nom>` et écrire une seule fonction `check(ctx, cfg, out)` ; la lecture de la carte, la configuration, la liste d'ignorés, le log et la carte de chaleur sont gérés par le framework. `ctx` contient toutes les informations du fichier de carte (tags et géométrie de tous les nœuds, ways et relations) et les résultats de calcul partagés (chevauchements de lanelets, relations prédécesseur / successeur, etc.) : pas besoin de modifier le code de lecture de la carte ni de refaire les calculs. Étapes et interface dans [ext/README.md](ext/README.md). `python3 -m unittest discover -s tests` charge automatiquement chaque extension de `ext/` et l'exécute une fois sur une carte synthétique.
 
@@ -323,6 +328,7 @@ MapChecker/
     border_sharing/           des voies côte à côte partagent-elles leur bordure
     crosswalk/                de combien un passage piéton dépasse au plus latéralement de la route
     stopline/                 une ligne d'arrêt est-elle une droite de deux points
+    trafficlight/             les feux sont-ils utilisables par Autoware et l'appariement caméra
   tests/                      tests (python3 -m unittest discover -s tests)
   config/
     config.yaml               configuration des vérifications
@@ -347,6 +353,7 @@ MapChecker/
     printer.py                sortie terminal / log
     heatmap.py                carte de chaleur et zones à forte concentration de problèmes
     heatmap_window.py         fenêtre de la carte de chaleur (interface graphique Tk)
+    masque.py                 masque de ralentissement des zones à forte concentration de problèmes
     build_dataset.py          génération des données d'entraînement à partir de l'historique git des dépôts de cartes
     tranning.py               entraînement de la régression logistique
   libs/                       bibliothèques tierces installées par install.sh (non versionnées)

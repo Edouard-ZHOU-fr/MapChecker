@@ -2,7 +2,7 @@
 
 [中文](checkinglist.md) | Français
 
-Ce document liste tout ce que `check_lanelet_map.py` vérifie actuellement, et les conditions dans lesquelles chaque WARNING / ERROR est émis. Il est établi d'après le code au 2026-10-30 ; les « valeurs actuelles » citées proviennent de `config/config.yaml` et de `ext/<nom>/config/config.yaml`. Après modification de la configuration, c'est le fichier de configuration qui fait foi.
+Ce document liste tout ce que `check_lanelet_map.py` vérifie actuellement, et les conditions dans lesquelles chaque WARNING / ERROR est émis. Il est établi d'après le code de la version 3.3.0 (2026-11-04) ; les « valeurs actuelles » citées proviennent de `config/config.yaml` et de `ext/<nom>/config/config.yaml`. Après modification de la configuration, c'est le fichier de configuration qui fait foi.
 
 ## Vue d'ensemble
 
@@ -11,7 +11,7 @@ Ce document liste tout ce que `check_lanelet_map.py` vérifie actuellement, et l
 | 1 | `turn_direction` | Lanelets véhicule | Toujours (sauf avec `--only-ext`) | WARNING |
 | 2 | `right_of_way` | Paires de lanelets véhicule qui se chevauchent, éléments de régulation `right_of_way` | Toujours (sauf avec `--only-ext`) | WARNING / ERROR |
 | 3 | `autoware` | Tout le fichier de carte | `autoware_checking: true` (actuellement `false`), nécessite de sourcer ROS | WARNING / ERROR |
-| Extension | `altitude` | Altitude `ele` des nœuds des bordures des lanelets véhicule | `enable: true` (actuellement désactivée) | WARNING |
+| Extension | `altitude` | Altitude `ele` des nœuds des bordures des lanelets véhicule | `enable: true` (actuellement activée) | WARNING |
 | Extension | `crosswalk` | Lanelets `subtype=crosswalk` | `enable: true` (actuellement activée) | WARNING |
 | Extension | `stopline` | Ways `type=stop_line` | `enable: true` (actuellement activée) | WARNING / ERROR |
 | Extension | `border_sharing` | Paires de lanelets véhicule côte à côte | `enable: true` (actuellement désactivée) | WARNING |

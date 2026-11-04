@@ -29,7 +29,7 @@ python3 check_lanelet_map.py --only-ext crosswalk --set crosswalk.max_extension=
 
 | 参数 | 默认值 | 说明 |
 |---|---|---|
-| `enable` | `false` | `true`：`check_lanelet_map.py` 运行本检查 |
+| `enable` | `false` | `true`：`check_lanelet_map.py` 运行本检查（本目录的配置中为 `true`） |
 | `max_extension` | `1.0` | crosswalk 每一端最多可以超出道路多少米，超出更多时报 WARNING |
 | `ignore` | `[]` | 本检查忽略的 crosswalk id，写法同 `config/ignore.yaml`：`[19942, 19991: 原因]` |
 

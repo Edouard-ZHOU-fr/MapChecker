@@ -26,7 +26,7 @@ python3 check_lanelet_map.py path/to/lanelet2_map.osm --only-ext stopline
 
 | 参数 | 默认值 | 说明 |
 |---|---|---|
-| `enable` | `false` | `true`：`check_lanelet_map.py` 运行本检查 |
+| `enable` | `false` | `true`：`check_lanelet_map.py` 运行本检查（本目录的配置中为 `true`） |
 | `ignore` | `[]` | 本检查忽略的 id，写法同 `config/ignore.yaml`：`[7731, 7732: 原因]` |
 
 本检查没有其他参数。
