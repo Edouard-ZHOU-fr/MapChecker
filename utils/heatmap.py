@@ -38,9 +38,9 @@ NON_GUI_BACKENDS = ("agg", "pdf", "pgf", "ps", "svg", "cairo", "template")
 # What report_hotspots() draws, in the png and in the window: pts / items / weights as returned by issue_points()
 # (without the issues hidden by map_min_p), core: whether each issue belongs to Check 1~3, spots: indices of the issues
 # of each hotspot, note: issues hidden by map_min_p, stamp: time of the report, extent: area drawn (x0, y0, x1, y1),
-# dens / img_extent: density()
+# dens / img_extent: density(), hidden: number of issues hidden by map_min_p (min_p)
 Heatmap = namedtuple("Heatmap", "lanelets aois pts items weights core weighted spots radius map_name note stamp "
-                                "extent dens img_extent")
+                                "extent dens img_extent hidden min_p", defaults=(0, 0.0))
 # A layer of the drawing, i.e. an entry of the legend:
 #   kind:    "density", "aoi", "check" (issue points of Check 1~3), "ext" (of an extension check), "errors" (ERRORs of
 #            all checks) or "hotspots"
@@ -152,7 +152,7 @@ def report_hotspots(lanelets, aois, out, path, radius, top, map_name, show=False
     unit = "p-weighted issues" if weighted else "issues"
     out.header(f"Hotspots (at least {MIN_HOTSPOT_ISSUES} {unit} within {radius:.0f} m)")
     pts, items, weights = issue_points(out, lanelets, radius)
-    note = ""
+    note, hidden = "", 0
     if weighted and min_p > 0:
         keep = np.array([item[2] is None or item[2] >= min_p for item in items], dtype=bool)
         hidden = int((~keep).sum())
@@ -179,7 +179,7 @@ def report_hotspots(lanelets, aois, out, path, radius, top, map_name, show=False
     extent = _extent(lanelets, aois, pts, radius)
     dens, img_extent = density(pts[core], weights[core], extent, radius / 2)
     heat = Heatmap(lanelets, aois, pts, items, weights, core, weighted, spots, radius, map_name, note,
-                   time.strftime("%Y-%m-%d %H:%M:%S"), extent, dens, img_extent)
+                   time.strftime("%Y-%m-%d %H:%M:%S"), extent, dens, img_extent, hidden, min_p)
     _save_image(path, heat)
     if show:
         _pending.append(heat)

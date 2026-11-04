@@ -191,7 +191,7 @@ class WindowTest(HeatmapTest):
         """Drag to pan: the drawn map is moved while dragging, back returns to the view before"""
         win = self.win
         scale, _, center = self.view()
-        start = self.pixel(center)
+        start = np.round(self.pixel(center))  # mouse events are in whole pixels
         self.mouse("button_press_event", start, button=1)
         self.mouse("motion_notify_event", start + (40, 20), button=1)
         transform = win.ax.transData.frozen()  # the view moves with the mouse

@@ -1,18 +1,21 @@
 """
 Heatmap window (IHM): the heatmap of report_hotspots(show=True) in a Tk window, opened after the report by
 utils.heatmap.show_windows() (requires tkinter and a display):
+  - header: map and time of the report; status bar: mouse and keyboard shortcuts
   - map (left): the same drawing as the saved png. Drag to pan (the drawn map is moved while dragging, redrawn when
     the mouse stops or is released), mouse wheel to zoom around the cursor; toolbar: zoom to a rectangle, back /
     forward, home (whole map), save the view, coordinates and lanelet under the cursor. The map keeps a 1:1 scale and
     always fills its area, it is never stretched, and the legend and color scale, in the side panel, never move over
     it. Resizing the window keeps the whole map (or the selection the map went to) in view; once panned / zoomed by
     hand, it keeps the scale and center instead, showing more or less of the map around it
-  - side panel (right): summary, color scale, layers (uncheck to hide), go to a lanelet by id, list of the hotspots
-    and of the issues of each check (click, or ↑ / ↓ to step through them: the map goes to the selection), details
-    of the selection (lines of the report, selectable and copyable)
+  - side panel (right): numbers (issues, expected true issues, hotspots, ...), legend (color scale, and the layers:
+    click one to show / hide it), go to a lanelet by id, list of the hotspots and of the issues of each check (click,
+    or ↑ / ↓ to step through them: the map goes to the selection), details of the selection (lines of the report,
+    selectable and copyable)
   - click on the map: an issue point (within CLICK_PIXELS pixels) is selected in the list, the view stays; a lanelet
     shows its id and its issues; empty space clears the selection (also Escape)
-The lanelets of the selection are outlined in orange and its issue points circled.
+The lanelets of the selection are outlined in orange and its issue points circled. Light theme with the surfaces and
+ink of the charts (as in ext/altitude/script/_plot.py), the accent is the first color of the heat scale.
 """
 
 import base64
@@ -30,17 +33,28 @@ from matplotlib.figure import Figure
 from matplotlib.path import Path
 from matplotlib.transforms import Bbox
 
-from .heatmap import CLICK_PIXELS, HIGHLIGHT_COLOR, color_scale, draw_layers, hotspot_text, scale_label, style_axes, \
-    summary
+from .heatmap import CLICK_PIXELS, HIGHLIGHT_COLOR, color_scale, draw_layers, hotspot_text, scale_label
 
-SURFACE = "#fcfcfb"          # background of the map and of the details
-MUTED = "#6b6b66"
-WARNING_COLOR = "#a35200"    # lines of the report in the details
-ERROR_COLOR = "#c92a2a"
+BG = "#f0efec"               # window
+CARD = "#fcfcfb"             # cards and map surface
+BORDER = "#e1e0d9"
+HOVER = "#f0efea"            # layer row under the mouse, toolbar button
+CHIP = "#e4e3dd"             # keys in the status bar
+THUMB = "#d6d5ce"            # scroll bars
+INK, INK_2, MUTED = "#0b0b0b", "#52514e", "#898781"
+GRID = "#ecebe6"             # grid of the map
+ACCENT = "#2a78d6"           # buttons, focus
+ACCENT_DARK = "#1c5cab"
+SELECTED = "#dce9f9"         # selected rows of the list
+WARNING_INK = "#a35200"      # [WARNING ...] / [ERROR] in the details
+ERROR_INK = "#b42318"
+FONTS = ("Ubuntu", "Noto Sans", "Cantarell", "DejaVu Sans")  # the first one installed
+MONO_FONTS = ("Ubuntu Mono", "DejaVu Sans Mono")
 MAX_WINDOW = (1600, 1000)    # initial size of the window (pixels), at most 90% of the screen
-MIN_WINDOW = (760, 480)
-PANEL_WIDTH = 360            # initial width of the side panel (pixels)
-MARGINS = (62, 24, 12, 10)   # left, bottom, right, top margins of the map axes (pixels), for the tick labels
+MIN_WINDOW = (820, 540)
+FOLDED_BELOW = 850           # the legend is folded at first when the window is less high than this (pixels)
+PANEL_WIDTH = 380            # initial width of the side panel (pixels)
+MARGINS = (58, 22, 10, 8)    # left, bottom, right, top margins of the map axes (pixels), for the tick labels
 ZOOM_STEP = 1.25             # zoom factor per mouse wheel step
 MIN_VIEW = 5.0               # zoom limits: the shorter side of the view is at least MIN_VIEW m, the longer side at
 MAX_VIEW = 4.0               #   most MAX_VIEW times the whole map
@@ -48,12 +62,27 @@ LANELET_MARGIN = 10.0        # going to a lanelet: space around it (m)
 PUSH_DELAY = 400             # ms after the last mouse wheel step before the view is added to back / forward
 REDRAW_DELAY = 150           # dragging: ms without moving before the map is redrawn
 ICON_SIZE = (22, 16)         # legend icons of the layers (pixels)
-HINT = ("Drag: pan  ·  Wheel: zoom  ·  Click an issue or a lanelet: details  ·  List: click or ↑ / ↓ to go to each "
-        "hotspot / issue  ·  Esc: clear")
+KEYS = (("Drag", "pan"), ("Wheel", "zoom"), ("Click", "issue / lanelet details"), ("↑ ↓", "next in the list"),
+        ("Esc", "clear"))
+NO_SELECTION = "Select a hotspot or an issue in the list, or click on the map"
 
 
 def _count(n, noun):
     return f"{n} {noun}" + ("" if n == 1 else "s")
+
+
+class _Canvas(FigureCanvasTkAgg):
+    """
+    The pixel ratio (screen dpi / 96) is rounded to 2 digits, as matplotlib does on Windows: on Linux it is not, and a
+    ratio such as 0.9995 makes the drawing a fraction of a pixel smaller than the Tk image, whose last row and column
+    then keep pixels of an older drawing
+    """
+
+    def _update_device_pixel_ratio(self, event=None):
+        ratio = round(self._tkcanvas.winfo_fpixels("1i") / 96, 2)
+        if self._set_device_pixel_ratio(ratio):
+            w, h = self.get_width_height(physical=True)
+            self._tkcanvas.configure(width=w, height=h)
 
 
 class _Toolbar(NavigationToolbar2Tk):
@@ -86,25 +115,27 @@ class HeatmapWindow:
         self._images = []       # Tk images, kept referenced
 
         root.title(f"MapChecker heatmap: {h.map_name}")
-        style = ttk.Style(root)
-        if "alt" in style.theme_names():
-            style.theme_use("alt")  # check marks in the check buttons (clam draws a cross)
-        self.bg = style.lookup("TFrame", "background") or "#dcdad5"
+        root.configure(background=BG)
+        self._fonts()
+        self._style()
         width, height = (min(m, int(0.9 * s)) for m, s in zip(MAX_WINDOW, (root.winfo_screenwidth(),
                                                                           root.winfo_screenheight())))
         root.geometry(f"{width}x{height}")
         root.minsize(*MIN_WINDOW)
+        root.iconphoto(True, self._logo(32))
 
-        ttk.Label(root, text=HINT, foreground=MUTED, padding=(8, 2)).pack(side=tk.BOTTOM, fill=tk.X)
+        self._build_header()
+        self._build_status()  # packed before the main area: it stays when the window gets small
         paned = ttk.PanedWindow(root, orient=tk.HORIZONTAL)
-        paned.pack(fill=tk.BOTH, expand=True)
-        left = ttk.Frame(paned)
-        panel = ttk.Frame(paned, padding=(10, 8, 10, 4), width=PANEL_WIDTH)
+        paned.pack(fill=tk.BOTH, expand=True, padx=12, pady=(12, 0))
+        left = tk.Frame(paned, background=CARD, highlightthickness=1, highlightbackground=BORDER,
+                        highlightcolor=BORDER)
+        panel = tk.Frame(paned, background=BG, width=PANEL_WIDTH)
         panel.pack_propagate(False)
         paned.add(left, weight=1)
         paned.add(panel, weight=0)
-        self._build_map(left, (width - PANEL_WIDTH, height))
-        self._build_panel(panel)
+        self._build_map(left, (width - PANEL_WIDTH - 40, height - 130))
+        self._build_panel(panel, fold_legend=height < FOLDED_BELOW)
         root.bind("<Escape>", lambda event: self.clear())
         root.protocol("WM_DELETE_WINDOW", self.close)
 
@@ -120,17 +151,199 @@ class HeatmapWindow:
                 widget.after_cancel(after_id)
         self.root.destroy()
 
+    # ---- look
+
+    def _fonts(self):
+        """Fonts of this window (named Tk fonts are per window: other windows are not changed)"""
+        families = set(tkfont.families(self.root))
+        family = next((f for f in FONTS if f in families), None) \
+            or tkfont.nametofont("TkDefaultFont", root=self.root).actual("family")
+        mono = next((f for f in MONO_FONTS if f in families), None) \
+            or tkfont.nametofont("TkFixedFont", root=self.root).actual("family")
+        for name in ("TkDefaultFont", "TkTextFont", "TkHeadingFont", "TkMenuFont"):
+            tkfont.nametofont(name, root=self.root).configure(family=family, size=10)
+
+        def font(family=family, size=10, weight="normal"):
+            return tkfont.Font(root=self.root, family=family, size=size, weight=weight)
+
+        self.f_body = tkfont.nametofont("TkDefaultFont", root=self.root)
+        self.f_bold = font(weight="bold")
+        self.f_small = font(size=9)
+        self.f_small_bold = font(size=9, weight="bold")
+        self.f_title = font(size=12, weight="bold")
+        self.f_value = font(size=15, weight="bold")
+        self.f_mono = font(mono, 10)
+        self.f_mono_bold = font(mono, 10, "bold")
+
+    def _style(self):
+        """ttk styles: flat light theme"""
+        style = ttk.Style(self.root)
+        style.theme_use("clam")
+        style.configure(".", background=BG, foreground=INK, bordercolor=BORDER, lightcolor=CARD, darkcolor=BORDER,
+                        troughcolor=CARD, focuscolor=ACCENT, selectbackground=SELECTED, selectforeground=INK,
+                        font=self.f_body)
+        style.configure("TPanedwindow", background=BG)
+        style.configure("Sash", sashthickness=12, gripcount=0, background=BG, bordercolor=BG, lightcolor=BG,
+                        darkcolor=BG)
+        style.layout("Treeview", [("Treeview.treearea", {"sticky": "nswe"})])  # no frame
+        style.configure("Treeview", background=CARD, fieldbackground=CARD, foreground=INK, borderwidth=0,
+                        rowheight=self.f_body.metrics("linespace") + 9, font=self.f_body)
+        style.map("Treeview", background=[("selected", SELECTED)], foreground=[("selected", INK)])
+        style.configure("Treeview.Heading", background=CARD, foreground=MUTED, font=self.f_small_bold,
+                        relief="flat", borderwidth=0, padding=(4, 2, 4, 6))
+        style.map("Treeview.Heading", background=[("active", CARD)], relief=[("active", "flat")])
+        style.layout("Vertical.TScrollbar",  # thumb only, no arrows
+                     [("Vertical.Scrollbar.trough", {"sticky": "ns", "children": [
+                         ("Vertical.Scrollbar.thumb", {"expand": "1", "sticky": "nswe"})]})])
+        style.configure("Vertical.TScrollbar", troughcolor=CARD, background=THUMB, bordercolor=CARD,
+                        lightcolor=THUMB, darkcolor=THUMB, arrowsize=9, gripcount=0, relief="flat")
+        style.map("Vertical.TScrollbar", background=[("active", MUTED)], lightcolor=[("active", MUTED)],
+                  darkcolor=[("active", MUTED)])
+        style.configure("Idle.Vertical.TScrollbar", background=CARD, lightcolor=CARD, darkcolor=CARD)  # nothing to
+        style.map("Idle.Vertical.TScrollbar", background=[], lightcolor=[], darkcolor=[])              # scroll
+        style.configure("TEntry", fieldbackground=CARD, foreground=INK, bordercolor=BORDER, lightcolor=CARD,
+                        darkcolor=CARD, insertcolor=INK, padding=(8, 5))
+        style.map("TEntry", bordercolor=[("focus", ACCENT)], lightcolor=[("focus", ACCENT)],
+                  darkcolor=[("focus", ACCENT)])
+        style.configure("Accent.TButton", background=ACCENT, foreground="#ffffff", bordercolor=ACCENT,
+                        lightcolor=ACCENT, darkcolor=ACCENT, focuscolor=ACCENT, font=self.f_bold, padding=(16, 5))
+        style.map("Accent.TButton", **{option: [("pressed", ACCENT_DARK), ("active", ACCENT_DARK)]
+                                       for option in ("background", "bordercolor", "lightcolor", "darkcolor")})
+
+    def _label(self, master, text, font=None, foreground=INK, background=CARD, **kwargs):
+        return tk.Label(master, text=text, font=font or self.f_body, foreground=foreground, background=background,
+                        **kwargs)
+
+    def _card(self, master, title, hint=None, folded=None):
+        """
+        A card with a title (and a hint on the right): (card, body). folded True / False: a click on the title folds /
+        unfolds the body, folded at first if True
+        """
+        card = tk.Frame(master, background=CARD, highlightthickness=1, highlightbackground=BORDER,
+                        highlightcolor=BORDER)
+        head = tk.Frame(card, background=CARD)
+        head.pack(fill=tk.X, padx=12, pady=(9, 5))
+        name = self._label(head, title, self.f_bold)
+        name.pack(side=tk.LEFT)
+        note = self._label(head, hint or "", self.f_small, MUTED)
+        note.pack(side=tk.RIGHT)
+        body = tk.Frame(card, background=CARD)
+        if folded is None:
+            body.pack(fill=tk.BOTH, expand=True, padx=12, pady=(0, 10))
+            return card, body
+
+        def fold(event=None, folded=not folded):
+            if folded:
+                body.pack_forget()
+            else:
+                body.pack(fill=tk.BOTH, expand=True, padx=12, pady=(0, 10))
+            name.configure(text=("▸ " if folded else "▾ ") + title)
+            note.configure(text="click to unfold" if folded else hint or "")
+            for widget in [head, *head.winfo_children()]:
+                widget.bind("<Button-1>", lambda event: fold(folded=not folded))
+
+        for widget in [head, *head.winfo_children()]:
+            widget.configure(cursor="hand2")
+        fold(folded=folded)
+        return card, body
+
+    def _scrollbar(self, master, view):
+        """Vertical scroll bar of view (Treeview, Text), its thumb hidden while everything is visible"""
+        bar = ttk.Scrollbar(master, orient=tk.VERTICAL, command=view.yview)
+
+        def update(first, last):
+            idle = float(first) <= 0.0 and float(last) >= 1.0
+            bar.configure(style="Idle.Vertical.TScrollbar" if idle else "Vertical.TScrollbar")
+            bar.set(first, last)
+
+        view.configure(yscrollcommand=update)
+        bar.pack(side=tk.RIGHT, fill=tk.Y, padx=(4, 0))
+        return bar
+
+    def _png_image(self, fig):
+        buf = io.BytesIO()
+        fig.savefig(buf, format="png", facecolor=fig.get_facecolor())
+        image = tk.PhotoImage(master=self.root, data=base64.b64encode(buf.getvalue()))
+        self._images.append(image)
+        return image
+
+    def _logo(self, size):
+        """Heat spot on a card: window icon and header"""
+        fig = Figure(figsize=(size / 100, size / 100), dpi=100)
+        fig.patch.set_facecolor(CARD)
+        ax = fig.add_axes((0, 0, 1, 1))
+        ax.set_axis_off()
+        y, x = np.mgrid[-1:1:96j, -1:1:96j]
+        r = np.hypot(x + 0.15, y - 0.1) / 0.9
+        rgba = color_scale(self.h)[1](np.clip(1.0 - r, 0.0, 1.0))
+        rgba[..., 3] = np.clip(1.6 * (1.0 - r), 0.0, 1.0)
+        ax.imshow(rgba, extent=(-1, 1, -1, 1), interpolation="bilinear")
+        return self._png_image(fig)
+
+    def _icon(self, layer, faded=False):
+        """Legend icon of layer, drawn like the layer; faded: layer hidden"""
+        fig = Figure(figsize=(ICON_SIZE[0] / 100, ICON_SIZE[1] / 100), dpi=100)
+        fig.patch.set_facecolor(CARD)
+        ax = fig.add_axes((0, 0, 1, 1))
+        ax.set_axis_off()
+        ax.set_xlim(0, 1)
+        ax.set_ylim(0, 1)
+        alpha = 0.25 if faded else 1.0
+        if layer.symbol is None:
+            ax.imshow(np.linspace(0, 1, 64)[None], cmap=color_scale(self.h)[1], aspect="auto", alpha=alpha,
+                      extent=(0.08, 0.92, 0.22, 0.78))
+        elif "marker" in layer.symbol:
+            ax.scatter([0.5], [0.5], alpha=alpha, **layer.symbol)
+        else:
+            ax.plot([0.08, 0.92], [0.5, 0.5], alpha=alpha, **layer.symbol)
+        return self._png_image(fig)
+
+    def _scale_image(self, width):
+        """Color scale of the density (horizontal)"""
+        fig = Figure(figsize=(width / 100, 0.34), dpi=100)
+        fig.patch.set_facecolor(CARD)
+        cax = fig.add_axes((0.015, 0.55, 0.97, 0.4))
+        bar = fig.colorbar(ScalarMappable(*color_scale(self.h)), cax=cax, orientation="horizontal")
+        bar.outline.set_visible(False)
+        cax.tick_params(colors=MUTED, labelsize=8, length=0, pad=2)
+        return self._png_image(fig)
+
+    # ---- header, status bar
+
+    def _build_header(self):
+        bar = tk.Frame(self.root, background=CARD)
+        bar.pack(side=tk.TOP, fill=tk.X)
+        tk.Frame(self.root, background=BORDER, height=1).pack(side=tk.TOP, fill=tk.X)
+        tk.Label(bar, image=self._logo(26), background=CARD).pack(side=tk.LEFT, padx=(14, 8), pady=9)
+        self._label(bar, "MapChecker", self.f_title).pack(side=tk.LEFT)
+        self._label(bar, "issue heatmap", foreground=MUTED).pack(side=tk.LEFT, padx=(6, 0), pady=(2, 0))
+        tk.Frame(bar, background=BORDER, width=1, height=20).pack(side=tk.LEFT, padx=14)
+        self._label(bar, self.h.map_name, self.f_bold, INK_2).pack(side=tk.LEFT)
+        self._label(bar, f"report {self.h.stamp}", self.f_small, MUTED).pack(side=tk.RIGHT, padx=16)
+
+    def _build_status(self):
+        bar = tk.Frame(self.root, background=BG)
+        bar.pack(side=tk.BOTTOM, fill=tk.X, padx=12, pady=(8, 8))
+        for key, action in KEYS:
+            self._label(bar, key, self.f_small_bold, INK_2, CHIP, padx=6).pack(side=tk.LEFT)
+            self._label(bar, action, self.f_small, MUTED, BG).pack(side=tk.LEFT, padx=(5, 16))
+
     # ---- map
 
     def _build_map(self, master, size):
         h = self.h
         self.fig = Figure(figsize=(size[0] / 100, size[1] / 100), dpi=100)
-        self.fig.patch.set_facecolor(SURFACE)
+        self.fig.patch.set_facecolor(CARD)
         self.ax = ax = self.fig.add_axes((0, 0, 1, 1))
         ax.set_axes_locator(self._locate)
         ax.set_aspect("equal", adjustable="datalim")
         ax.ticklabel_format(useOffset=False, style="plain")
-        style_axes(ax)
+        ax.set_facecolor(CARD)
+        ax.tick_params(colors=MUTED, labelsize=8, length=0, pad=5)
+        for spine in ax.spines.values():
+            spine.set_visible(False)
+        ax.grid(True, color=GRID, linewidth=0.8)
+        ax.set_axisbelow(True)  # under the lanelets
         self.layers = draw_layers(ax, h)
         for image in ax.get_images():
             image.mouseover = False  # the toolbar shows coordinates and lanelet, not the color under the cursor
@@ -147,16 +360,35 @@ class HeatmapWindow:
             if layer.kind in ("check", "ext", "errors"):
                 self.point_layer[[t[0] for t in layer.targets]] = k
 
-        self.canvas = FigureCanvasTkAgg(self.fig, master=master)
+        self.canvas = _Canvas(self.fig, master=master)
         self.toolbar = _Toolbar(self.canvas, master, self.fit)
-        self.toolbar.pack(side=tk.TOP, fill=tk.X)
-        self.canvas.get_tk_widget().pack(side=tk.TOP, fill=tk.BOTH, expand=True)
+        self._style_toolbar()
+        self.toolbar.pack(side=tk.TOP, fill=tk.X, padx=8, pady=4)
+        tk.Frame(master, background=BORDER, height=1).pack(side=tk.TOP, fill=tk.X)
+        widget = self.canvas.get_tk_widget()
+        widget.configure(background=CARD)
+        widget.pack(side=tk.TOP, fill=tk.BOTH, expand=True, padx=1, pady=(6, 1))
         self.canvas.mpl_connect("resize_event", self._on_resize)
         self.canvas.mpl_connect("button_press_event", self._on_press)
         self.canvas.mpl_connect("motion_notify_event", self._on_motion)
         self.canvas.mpl_connect("button_release_event", self._on_release)
         self.canvas.mpl_connect("scroll_event", self._on_scroll)
         self.fit(push=False)  # fitted again to the actual size at the first resize
+
+    def _style_toolbar(self):
+        """Flat toolbar on the card"""
+        self.toolbar.configure(background=CARD)
+        look = {"background": CARD, "activebackground": HOVER, "selectcolor": SELECTED, "relief": "flat",
+                "overrelief": "flat", "offrelief": "flat", "borderwidth": 0, "highlightthickness": 0,
+                "foreground": MUTED, "font": self.f_small}
+        for child in self.toolbar.winfo_children():
+            if isinstance(child, tk.Frame) and not child.winfo_children():  # separator
+                child.configure(background=BORDER, relief="flat", width=1)
+                continue
+            options = set(child.keys())
+            child.configure(**{k: v for k, v in look.items() if k in options})
+            if isinstance(child, (tk.Button, tk.Checkbutton)):
+                child.configure(padx=5, pady=3)
 
     def _lanelets_at(self, x, y):
         """Ids of the lanelets containing (x, y)"""
@@ -254,7 +486,7 @@ class HeatmapWindow:
         self._redraw_id = self.root.after(REDRAW_DELAY, self._redraw_drag)
 
     def _snapshot(self, xy):
-        """Dragging: keeps the drawn map (inside the axes, without the frame) and the pointer position xy"""
+        """Dragging: keeps the drawn map (inside the axes) and the pointer position xy"""
         if self.fig.stale:
             self.canvas.draw()
         self._drag["snap"] = self.canvas.copy_from_bbox(self.ax.bbox.padded(-1))
@@ -272,8 +504,6 @@ class HeatmapWindow:
         sx1, sx2, sy1, sy2 = x1 + max(0, -dx), x2 - max(0, dx), y1 + max(0, -dy), y2 - max(0, dy)
         if sx1 < sx2 and sy1 < sy2:
             self.canvas.restore_region(snap, bbox=(sx1, sy1, sx2, sy2), xy=(x1 + dx, y1 + dy))  # xy: of the whole
-        for spine in self.ax.spines.values():
-            self.ax.draw_artist(spine)
         self.canvas.blit(self.ax.bbox)
 
     def _redraw_drag(self):
@@ -349,60 +579,139 @@ class HeatmapWindow:
 
     # ---- side panel
 
-    def _build_panel(self, panel):
-        h = self.h
-        title = tkfont.nametofont("TkDefaultFont", root=self.root).copy()
-        size = title.cget("size")  # negative: in pixels
-        title.configure(weight="bold", size=size + 2 if size > 0 else size - 2)
-        wrap = PANEL_WIDTH - 24
-        ttk.Label(panel, text=h.map_name, font=title).pack(anchor="w")
-        info = ttk.Label(panel, text=f"{summary(h)}\n{h.stamp}", foreground=MUTED, wraplength=wrap, justify="left")
-        info.pack(anchor="w", fill=tk.X, pady=(2, 6))
-
-        ttk.Label(panel, image=self._scale_image(wrap)).pack(anchor="w")
-        scale = ttk.Label(panel, text=scale_label(h), foreground=MUTED, wraplength=wrap, justify="left")
-        scale.pack(anchor="w", fill=tk.X, pady=(0, 6))
-
-        def rewrap(event):
-            for label in (info, scale):
-                label.configure(wraplength=max(event.width - 24, 100))
-
-        panel.bind("<Configure>", rewrap)
-
-        box = ttk.LabelFrame(panel, text="Layers", padding=(6, 2))
-        box.pack(fill=tk.X, pady=(0, 6))
-        self.shown = []
-        for k, layer in enumerate(self.layers):
-            var = tk.BooleanVar(master=self.root, value=True)
-            ttk.Checkbutton(box, text=layer.label, image=self._icon(layer), compound="left", variable=var,
-                            command=lambda k=k: self._toggle(k)).pack(anchor="w")
-            self.shown.append(var)
-
-        search = ttk.Frame(panel)
-        search.pack(fill=tk.X, pady=(0, 6))
-        ttk.Label(search, text="Go to lanelet").pack(side=tk.LEFT)
-        self.search = ttk.Entry(search, width=12)
-        self.search.pack(side=tk.LEFT, fill=tk.X, expand=True, padx=6)
-        self.search.bind("<Return>", self._goto_lanelet)
-        ttk.Button(search, text="Go", width=4, command=self._goto_lanelet).pack(side=tk.LEFT)
-
+    def _build_panel(self, panel, fold_legend=False):
+        self._build_numbers(panel).pack(fill=tk.X)
+        self._build_legend(panel, fold_legend).pack(fill=tk.X, pady=(10, 0))
+        self._build_search(panel).pack(fill=tk.X, pady=10)
         split = ttk.PanedWindow(panel, orient=tk.VERTICAL)
         split.pack(fill=tk.BOTH, expand=True)
-        split.add(self._build_tree(split), weight=3)
-        split.add(self._build_details(split), weight=2)
+        split.add(self._build_tree(split), weight=1)
+        split.add(self._build_details(split), weight=1)
+
+    def _numbers(self):
+        """(label, value) of the number tiles"""
+        h = self.h
+        errors = sum(item[3].startswith("[ERROR]") for item in h.items)
+        numbers = [("Issues", f"{h.core.sum()}")]
+        if h.weighted:
+            numbers.append(("Expected true", f"{h.weights[h.core].sum():.1f}"))
+        numbers.append(("Hotspots", f"{len(h.spots)}"))
+        if errors:
+            numbers.append(("Errors", f"{errors}"))
+        if not h.core.all():
+            numbers.append(("Ext checks", f"{(~h.core).sum()}"))
+        if h.hidden:
+            numbers.append((f"Hidden, p < {h.min_p:.2f}", f"{h.hidden}"))
+        return numbers
+
+    def _build_numbers(self, master):
+        """Number tiles, at most three per row (two by two for four)"""
+        frame = tk.Frame(master, background=BG)
+        numbers = self._numbers()
+        columns = {1: 1, 2: 2, 4: 2}.get(len(numbers), 3)
+        for k, (label, value) in enumerate(numbers):
+            tile = tk.Frame(frame, background=CARD, highlightthickness=1, highlightbackground=BORDER,
+                            highlightcolor=BORDER)
+            tile.grid(row=k // columns, column=k % columns, sticky="nsew", padx=(0 if k % columns == 0 else 8, 0),
+                      pady=(0 if k < columns else 8, 0))
+            self._label(tile, label, self.f_small, MUTED, anchor="w").pack(fill=tk.X, padx=10, pady=(6, 0))
+            self._label(tile, value, self.f_value, anchor="w").pack(fill=tk.X, padx=10, pady=(0, 5))
+        for column in range(columns):
+            frame.columnconfigure(column, weight=1, uniform="tile")
+        return frame
+
+    def _build_legend(self, master, folded=False):
+        """Color scale, and the layers: a click shows / hides one; a click on the title folds / unfolds it"""
+        card, body = self._card(master, "Legend", "click a layer to show / hide it", folded)
+        tk.Label(body, image=self._scale_image(PANEL_WIDTH - 30), background=CARD).pack(anchor="w")
+        caption = self._label(body, scale_label(self.h), self.f_small, MUTED, justify="left",
+                              wraplength=PANEL_WIDTH - 40)
+        caption.pack(anchor="w", pady=(0, 6))
+        body.bind("<Configure>", lambda event: caption.configure(wraplength=max(event.width - 4, 100)))
+        self.shown, self.rows = [], []
+        for k, layer in enumerate(self.layers):
+            self.shown.append(tk.BooleanVar(master=self.root, value=True))
+            self._layer_row(body, k, layer)
+        return card
+
+    def _layer_row(self, master, k, layer):
+        if layer.kind in ("density", "aoi"):
+            name, count = ("Issue density" if layer.kind == "density" else "AOI"), ""
+        elif layer.kind == "hotspots":
+            name, count = "Hotspots", f"{len(layer.targets)}"
+        else:
+            name, count = layer.label.split(" (")[0], f"{len(layer.targets)}"
+        row = tk.Frame(master, background=CARD, cursor="hand2")
+        row.pack(fill=tk.X)
+        images = (self._icon(layer), self._icon(layer, faded=True))
+        icon = tk.Label(row, image=images[0], background=CARD)
+        icon.pack(side=tk.LEFT, padx=(4, 8), pady=2)
+        texts = [self._label(row, name)]
+        texts[0].pack(side=tk.LEFT)
+        if layer.kind == "ext":
+            texts.append(self._label(row, "ext", self.f_small, MUTED))
+            texts[1].pack(side=tk.LEFT, padx=(6, 0))
+        number = self._label(row, count, foreground=INK_2)
+        number.pack(side=tk.RIGHT, padx=(0, 6))
+        widgets = [row, icon, *texts, number]
+        for widget in widgets:
+            widget.bind("<Button-1>", lambda event: self._flip(k))
+            widget.bind("<Enter>", lambda event: self._hover(k, True))
+            widget.bind("<Leave>", lambda event: self._hover(k, False))
+        self.rows.append((widgets, icon, images, texts, number))
+
+    def _hover(self, k, on):
+        for widget in self.rows[k][0]:
+            widget.configure(background=HOVER if on else CARD)
+
+    def _flip(self, k):
+        self.shown[k].set(not self.shown[k].get())
+        self._toggle(k)
+
+    def _toggle(self, k):
+        """Shows / hides layer k as self.shown[k]"""
+        shown = self.shown[k].get()
+        for artist in self.layers[k].artists:
+            artist.set_visible(shown)
+        _, icon, images, texts, number = self.rows[k]
+        icon.configure(image=images[0] if shown else images[1])
+        texts[0].configure(foreground=INK if shown else MUTED)
+        number.configure(foreground=INK_2 if shown else MUTED)
+        self.canvas.draw_idle()
+
+    def _build_search(self, master):
+        """Go to a lanelet by id"""
+        frame = tk.Frame(master, background=BG)
+        text = tk.StringVar(master=self.root)
+        self.search = ttk.Entry(frame, textvariable=text, font=self.f_body)
+        self.search.pack(side=tk.LEFT, fill=tk.X, expand=True)
+        placeholder = self._label(self.search, "Go to lanelet id…", foreground=MUTED, cursor="xterm")
+
+        def update(*args):
+            if text.get() or self.root.focus_get() is self.search:
+                placeholder.place_forget()
+            else:
+                placeholder.place(x=9, rely=0.5, anchor="w")
+
+        text.trace_add("write", update)
+        self.search.bind("<FocusIn>", update, "+")
+        self.search.bind("<FocusOut>", update, "+")
+        placeholder.bind("<Button-1>", lambda event: self.search.focus_set())
+        update()
+        self.search.bind("<Return>", self._goto_lanelet)
+        ttk.Button(frame, text="Go", style="Accent.TButton", width=4,
+                   command=self._goto_lanelet).pack(side=tk.LEFT, padx=(8, 0))
+        return frame
 
     def _build_tree(self, master):
         """List: hotspots, ERRORs, then the issues of each check in the order of the output"""
         h = self.h
-        frame = ttk.Frame(master)
-        self.tree = tree = ttk.Treeview(frame, columns=("p",), selectmode="extended")
-        tree.heading("#0", text="Hotspots and issues", anchor="w")
-        tree.heading("p", text="p", anchor="e")
+        card, body = self._card(master, "Hotspots and issues", "↑ ↓ to step")
+        self.tree = tree = ttk.Treeview(body, columns=("p",), selectmode="extended", show="tree", height=8)
         tree.column("#0", width=200, minwidth=120, stretch=True)
-        tree.column("p", width=44, minwidth=44, stretch=False, anchor="e")
-        bar = ttk.Scrollbar(frame, orient=tk.VERTICAL, command=tree.yview)
-        tree.configure(yscrollcommand=bar.set)
-        bar.pack(side=tk.RIGHT, fill=tk.Y)
+        tree.column("p", width=56, minwidth=56, stretch=False, anchor="e")
+        tree.tag_configure("group", font=self.f_bold)
+        self._scrollbar(body, tree)
         tree.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
 
         order = {"hotspots": 0, "errors": 1}
@@ -410,37 +719,39 @@ class HeatmapWindow:
             layer = self.layers[k]
             if not layer.targets:
                 continue
+            icon = self.rows[k][2][0]
             if layer.kind == "hotspots":
-                tree.insert("", "end", f"layer:{k}", text=f"Hotspots ({len(h.spots)})", open=True)
+                tree.insert("", "end", f"layer:{k}", text=f" Hotspots ({len(h.spots)})", image=icon, open=True,
+                            tags=("group",))
                 for rank, members in enumerate(h.spots):
-                    size = f"{len(members)} issues" + (f", p-weighted {h.weights[members].sum():.1f}"
-                                                       if h.weighted else "")
-                    tree.insert(f"layer:{k}", "end", f"spot:{rank}", text=f"#{rank + 1}  {size}")
+                    size = _count(len(members), "issue") + (f" · p-weighted {h.weights[members].sum():.1f}"
+                                                            if h.weighted else "")
+                    tree.insert(f"layer:{k}", "end", f"spot:{rank}", text=f"#{rank + 1}   {size}")
                 continue
-            tree.insert("", "end", f"layer:{k}", text=layer.label, open=layer.kind != "ext")
+            tree.insert("", "end", f"layer:{k}", text=f" {layer.label}", image=icon, open=layer.kind != "ext",
+                        tags=("group",))
             for (i,) in layer.targets:
                 _, _, p, line = h.items[i]
                 text = line.split("] ", 1)[-1].split(" | ", 1)[0]
-                tree.insert(f"layer:{k}", "end", f"issue:{i}", text=text, values=("" if p is None else f"{p:.2f}",))
+                tree.insert(f"layer:{k}", "end", f"issue:{i}", text=text, values=("" if p is None else f"p {p:.2f}",))
         tree.bind("<<TreeviewSelect>>", self._on_select)
         tree.focus_set()
-        return frame
+        return card
 
     def _build_details(self, master):
         """Details of the selection: read-only, selectable and copyable (Ctrl+C, Ctrl+A)"""
-        frame = ttk.Frame(master)
-        self.details = text = tk.Text(frame, wrap="word", height=8, relief="flat", borderwidth=0, padx=6, pady=4,
-                                      background=SURFACE, font="TkDefaultFont")
-        bar = ttk.Scrollbar(frame, orient=tk.VERTICAL, command=text.yview)
-        text.configure(yscrollcommand=bar.set)
-        bar.pack(side=tk.RIGHT, fill=tk.Y)
+        card, body = self._card(master, "Details")
+        self.details = text = tk.Text(body, wrap="word", height=8, relief="flat", borderwidth=0,
+                                      highlightthickness=0, padx=0, pady=0, background=CARD, foreground=INK,
+                                      font=self.f_body, selectbackground=SELECTED, selectforeground=INK,
+                                      insertwidth=0)
+        self._scrollbar(body, text)
         text.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
-        bold = tkfont.nametofont("TkDefaultFont", root=self.root).copy()
-        bold.configure(weight="bold")
-        text.tag_configure("title", font=bold)
-        text.tag_configure("muted", foreground=MUTED)
-        text.tag_configure("warning", foreground=WARNING_COLOR)
-        text.tag_configure("error", foreground=ERROR_COLOR)
+        text.tag_configure("title", font=self.f_title, spacing3=2)
+        text.tag_configure("muted", foreground=MUTED, spacing3=2)
+        for tag, color in (("line", INK), ("warning", WARNING_INK), ("error", ERROR_INK)):
+            text.tag_configure(tag, foreground=color, font=self.f_mono if tag == "line" else self.f_mono_bold,
+                               spacing1=7)
 
         def read_only(event):
             if event.state & 0x4 and event.keysym.lower() == "a":
@@ -454,58 +765,26 @@ class HeatmapWindow:
         text.bind("<Key>", read_only)
         for sequence in ("<<Paste>>", "<<PasteSelection>>", "<<Cut>>", "<<Clear>>"):
             text.bind(sequence, lambda event: "break")
-        self._set_details([("Select a hotspot or an issue in the list, or click on the map", "muted")])
-        return frame
+        self._set_details([(NO_SELECTION, "muted")])
+        return card
 
-    def _png_image(self, fig):
-        buf = io.BytesIO()
-        fig.savefig(buf, format="png", facecolor=fig.get_facecolor())
-        image = tk.PhotoImage(master=self.root, data=base64.b64encode(buf.getvalue()))
-        self._images.append(image)
-        return image
-
-    def _scale_image(self, width):
-        """Color scale of the density (horizontal)"""
-        fig = Figure(figsize=(width / 100, 0.36), dpi=100)
-        fig.patch.set_facecolor(self.bg)
-        cax = fig.add_axes((0.04, 0.5, 0.92, 0.42))
-        bar = fig.colorbar(ScalarMappable(*color_scale(self.h)), cax=cax, orientation="horizontal")
-        bar.outline.set_edgecolor("#b5b5b0")
-        cax.tick_params(colors=MUTED, labelsize=8, length=2, pad=1)
-        return self._png_image(fig)
-
-    def _icon(self, layer):
-        """Legend icon of layer, drawn like the layer"""
-        fig = Figure(figsize=(ICON_SIZE[0] / 100, ICON_SIZE[1] / 100), dpi=100)
-        fig.patch.set_facecolor(self.bg)
-        ax = fig.add_axes((0, 0, 1, 1))
-        ax.set_axis_off()
-        ax.set_xlim(0, 1)
-        ax.set_ylim(0, 1)
-        if layer.symbol is None:
-            ax.imshow(np.linspace(0, 1, 64)[None], cmap=color_scale(self.h)[1], aspect="auto",
-                      extent=(0.1, 0.9, 0.25, 0.75))
-        elif "marker" in layer.symbol:
-            ax.scatter([0.5], [0.5], **layer.symbol)
-        else:
-            ax.plot([0.1, 0.9], [0.5, 0.5], **layer.symbol)
-        return self._png_image(fig)
-
-    def _toggle(self, k):
-        for artist in self.layers[k].artists:
-            artist.set_visible(self.shown[k].get())
-        self.canvas.draw_idle()
-
-    def _set_details(self, parts):
-        """parts: [(text, tag)], one line each"""
+    def _set_details(self, lines):
+        """lines: [(text, tag)] or [[(text, tag), ...]] (one line made of several parts)"""
         self.details.delete("1.0", "end")
-        for text, tag in parts:
-            self.details.insert("end", text + "\n", tag)
+        for line in lines:
+            for text, tag in line if isinstance(line, list) else [line]:
+                self.details.insert("end", text, tag)
+            self.details.insert("end", "\n")
 
     def _lines(self, issues):
-        """Lines of the report of the issues, colored"""
-        return [(self.h.items[i][3], "error" if self.h.items[i][3].startswith("[ERROR]") else "warning")
-                for i in issues]
+        """Lines of the report of the issues: the [WARNING ...] / [ERROR] prefix in the color of its status"""
+        lines = []
+        for i in issues:
+            line = self.h.items[i][3]
+            prefix, rest = line.split("] ", 1) if "] " in line else ("", line)
+            status = "error" if line.startswith("[ERROR]") else "warning"
+            lines.append([(prefix + "] ", status), (rest, "line")] if prefix else [(rest, "line")])
+        return lines
 
     # ---- selection
 
@@ -539,7 +818,7 @@ class HeatmapWindow:
         h = self.h
         if not iids:
             self._highlight([], [])
-            self._set_details([("Select a hotspot or an issue in the list, or click on the map", "muted")])
+            self._set_details([(NO_SELECTION, "muted")])
             return
         issues = sorted({i for iid in iids for i in self._issues_of(iid)})
         ids = sorted({lid for i in issues for lid in h.items[i][1]}, key=int)
@@ -548,14 +827,14 @@ class HeatmapWindow:
             head = [(f"Hotspot #{rank + 1}", "title"),
                     (hotspot_text(h.pts, h.items, h.weights, h.weighted, h.spots[rank]), "muted")]
         elif len(iids) == 1 and iids[0].startswith("layer:"):
-            head = [(self.tree.item(iids[0], "text"), "title")]
+            head = [(self.tree.item(iids[0], "text").strip(), "title")]
         elif len(issues) == 1:
             category, _, p, _ = h.items[issues[0]]
             head = [(category + ("" if p is None else f"  ·  p = {p:.2f}"), "title"),
                     (f"lanelet {' / '.join(h.items[issues[0]][1]) or '-'}", "muted")]
         else:
             head = [(f"{len(issues)} issues", "title"), (f"lanelets: {' '.join(ids) or '-'}", "muted")]
-        self._set_details(head + [("", None)] + self._lines(issues))
+        self._set_details(head + self._lines(issues))
         self._highlight(issues, ids)
         if move:
             self._goto(h.pts[issues], h.radius, 1.5 * h.radius)
@@ -565,8 +844,7 @@ class HeatmapWindow:
         issues = [i for i, item in enumerate(self.h.items) if set(item[1]) & set(ids)]
         self._set_details([(f"lanelet {', '.join(ids)}", "title"),
                            (_count(len(issues), "issue") + " on the map" if issues else "no issue on the map",
-                            "muted"),
-                           ("", None)] + self._lines(issues))
+                            "muted")] + self._lines(issues))
         self._highlight(issues, ids)
 
     def _goto_lanelet(self, event=None):
