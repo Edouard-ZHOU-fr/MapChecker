@@ -304,7 +304,7 @@ Chaque sous-répertoire de `ext/` est une extension indépendante, avec son prop
 | [altitude](ext/altitude/README.md) | Points anormaux de l'altitude `ele` sur les bordures de voie (sauts, pics, dévers excessif, absence de `ele`) ; génère aussi dans le répertoire des logs un graphique d'évolution de l'altitude `<nom du log>_altitude.png` |
 | [border_sharing](ext/border_sharing/README.md) | Des voies côte à côte partagent-elles la bordure entre elles ; WARNING si les deux bordures coïncident mais sont des ways différents (pas de changement de voie possible, interstice ou chevauchement entre voies opposées) |
 | [crosswalk](ext/crosswalk/README.md) | De combien un passage piéton dépasse au plus latéralement de la route ; WARNING au-delà de `max_extension` |
-| [stopline](ext/stopline/README.md) | Une ligne d'arrêt est-elle formée de deux points seulement (une droite et non une ligne brisée) ; WARNING au-delà de 2 points |
+| [stopline](ext/stopline/README.md) | Une ligne d'arrêt est-elle formée de deux points seulement (une droite et non une ligne brisée) ; WARNING au-delà de 2 points. Le `ref_line` d'un traffic_sign et le `refers` d'un road_marking sont-ils des lignes d'arrêt (ligne d'arrêt dans le mauvais rôle ou `type` erroné : Autoware ne s'y arrête pas) |
 | [trafficlight](ext/trafficlight/README.md) | Les feux sont-ils utilisables par le module traffic_light d'Autoware et l'appariement caméra : feu dessiné à l'envers ou derrière la ligne d'arrêt, si bien qu'aucun feu n'est reconnu sur la voie (le véhicule ne repart jamais), ligne d'arrêt qui ne traverse pas la voie (pas d'arrêt au rouge), feu appartenant à plusieurs éléments de régulation, ligne d'arrêt prolongée qui traverse une autre voie de même sens, hauteur du feu et position des ampoules |
 
 **Ajouter une extension** : copier le modèle `cp -r ext/_template ext/<nom>` et écrire une seule fonction `check(ctx, cfg, out)` ; la lecture de la carte, la configuration, la liste d'ignorés, le log et la carte de chaleur sont gérés par le framework. `ctx` contient toutes les informations du fichier de carte (tags et géométrie de tous les nœuds, ways et relations) et les résultats de calcul partagés (chevauchements de lanelets, relations prédécesseur / successeur, etc.) : pas besoin de modifier le code de lecture de la carte ni de refaire les calculs. Étapes et interface dans [ext/README.md](ext/README.md). `python3 -m unittest discover -s tests` charge automatiquement chaque extension de `ext/` et l'exécute une fois sur une carte synthétique.
@@ -327,7 +327,7 @@ MapChecker/
     altitude/                 points anormaux de l'altitude des voies, et graphique d'évolution de l'altitude
     border_sharing/           des voies côte à côte partagent-elles leur bordure
     crosswalk/                de combien un passage piéton dépasse au plus latéralement de la route
-    stopline/                 une ligne d'arrêt est-elle une droite de deux points
+    stopline/                 une ligne d'arrêt est-elle une droite de deux points, traffic_sign / road_marking la référencent-ils correctement
     trafficlight/             les feux sont-ils utilisables par Autoware et l'appariement caméra
   tests/                      tests (python3 -m unittest discover -s tests)
   config/

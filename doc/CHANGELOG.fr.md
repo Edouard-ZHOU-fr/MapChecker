@@ -6,6 +6,20 @@ Ce fichier recense les principales évolutions de chaque version de MapChecker, 
 
 ## [Non publié]
 
+### Ajouté
+
+- **Extension `stopline` : références des éléments de régulation traffic_sign / road_marking à leur ligne d'arrêt**, avec les mêmes exigences que `regulatory_element_details_for_traffic_signs` et `road_markings` d'autoware_lanelet2_map_validator :
+  - traffic_sign : `refers` est le panneau, `ref_line` la ligne d'arrêt. Un panneau stop sans `ref_line` donne une ERROR (le module stop_line d'Autoware s'arrête devant le `ref_line`, le véhicule ne s'y arrête pas) ; si la ligne d'arrêt a été mise dans `refers`, le message indique de changer son rôle.
+  - road_marking : exactement un `refers`, de `type=stop_line` ; sinon Autoware ne l'utilise pas comme ligne d'arrêt (par exemple ligne d'arrêt d'intersection).
+  - Trouvé sur les cartes existantes : le traffic_sign 51096 de lanelet2_map a sa ligne d'arrêt dans `refers` et pas de `ref_line` ; 2 road_marking de lanelet2_map et 4 de buc référencent une ligne `type=line_thin`.
+
+  Voir [ext/stopline/README.md](../ext/stopline/README.md#引用).
+
+### Corrigé
+
+- Extension `stopline` : une ligne d'arrêt référencée par le `refers` d'un road_marking était listée comme « not referenced by any regulatory element », et ses messages n'indiquaient pas les lanelets qui la référencent (20 des 21 cas de lanelet2_map). Elle compte désormais comme référencée.
+- Dans la liste des éléments ignorés en fin de rapport, un id d'élément de régulation qui a bien masqué des problèmes (par exemple l'id d'un élément de régulation pour stopline / trafficlight) est affiché `reg_elem <id> ... N issue(s) suppressed`, et non plus à tort `not found in map`.
+
 ## [3.3.0] - 2026-11-04
 
 ### Ajouté

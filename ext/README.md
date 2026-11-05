@@ -7,7 +7,7 @@
 | [altitude](altitude/README.md) | 车道边界上高程 `ele` 的突兀点（跳变、尖峰、横坡过大、没有 `ele`），另外生成高程趋势图 `<日志名>_altitude.png` |
 | [border_sharing](border_sharing/README.md) | 并排的车道是否共用中间的边界线；位置重合但各画一条（不同的 way）时报 WARNING，此时不能换道，对向车道之间可能有缝或重叠 |
 | [crosswalk](crosswalk/README.md) | crosswalk 在横向上最多超出道路多少，超出 `max_extension` 时报 WARNING |
-| [stopline](stopline/README.md) | 停止线是否只由两个点组成（一条直线而不是折线），多于 2 个点时报 WARNING |
+| [stopline](stopline/README.md) | 停止线是否只由两个点组成（一条直线而不是折线），多于 2 个点时报 WARNING；traffic_sign 的 `ref_line`、road_marking 的 `refers` 是否为停止线（停止线放错 role 或 `type` 写错时 Autoware 不会在这里停车） |
 | [trafficlight](trafficlight/README.md) | 红绿灯能否被 Autoware 的 traffic_light 模块和相机匹配使用：灯画反或在停止线后面导致车道上认不出任何灯（车永远不走）、停止线不穿过车道（红灯不停）、一个灯属于多个规则元素、停止线延长后穿过别的同向车道、灯高和灯泡位置 |
 | [_template](_template/README.md) | 新扩展的模板（示例：车辆 lanelet 的必需标签），不会自动运行 |
 

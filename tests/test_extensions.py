@@ -24,7 +24,7 @@ import numpy as np  # noqa: E402
 
 from utils import ext as extmod  # noqa: E402
 from utils.context import MapContext  # noqa: E402
-from utils.ignore import load_ignore, parse_items  # noqa: E402
+from utils.ignore import load_ignore, parse_items, report_ignored  # noqa: E402
 from utils.printer import Printer  # noqa: E402
 
 OPTS = {"min_overlap_area": 1.0, "parallel_min_length": 10.0, "parallel_min_gap": 1.5, "turn_angle": 30.0,
@@ -121,21 +121,38 @@ class ExtensionTest(unittest.TestCase):
         out, _ = run_extensions([ext], self.map_path)
         self.assertEqual(out.count["crosswalk"], 0)
 
+    @staticmethod
+    def typed_ways(ways):
+        """{way id: ((node id, ...), type, subtype or None)} -> XML of the ways with their type / subtype tags"""
+        return [f'<way id="{wid}">' + "".join(f'<nd ref="{r}"/>' for r in refs) + f'<tag k="type" v="{kind}"/>'
+                + (f'<tag k="subtype" v="{sub}"/>' if sub else "") + "</way>"
+                for wid, (refs, kind, sub) in ways.items()]
+
+    @staticmethod
+    def reg_elems(regs):
+        """{regulatory element id: (subtype, {role: [way ids]})} -> XML of the regulatory elements"""
+        return [f'<relation id="{rid}">'
+                + "".join(f'<member type="way" role="{role}" ref="{w}"/>' for role, ws in roles.items() for w in ws)
+                + f'<tag k="type" v="regulatory_element"/><tag k="subtype" v="{sub}"/></relation>'
+                for rid, (sub, roles) in regs.items()]
+
     def test_stopline(self):
         """stopline: 2 points pass; more points WARNING with the distance of the middle point to the line between the
-        ends (also when the points are on the line); 1 point ERROR; ignored by the stop line id or a lanelet using it"""
+        ends (also when the points are on the line); 1 point ERROR; ignored by the stop line id or a lanelet using it;
+        a stop line referenced as refers by a road_marking counts as referenced"""
         path = os.path.join(self.tmp, "stopline.osm")
         points = {1: (0, 3.5), 2: (50, 3.5), 3: (0, 0), 4: (50, 0),
                   31: (10, 0), 32: (10, 3.5),                    # straight line of 2 points
                   33: (30, 0), 34: (30.5, 1.75), 35: (30, 3.5),  # polyline, middle point 0.5 m off the line
                   36: (40, 0), 37: (40, 1.75), 38: (40, 3.5),    # 3 points on a straight line
-                  39: (45, 0)}                                   # a single point
-        stop_lines = {51: (31, 32), 52: (33, 34, 35), 53: (36, 37, 38), 54: (39,)}
-        extra = [f'<way id="{wid}">' + "".join(f'<nd ref="{r}"/>' for r in refs) + '<tag k="type" v="stop_line"/></way>'
-                 for wid, refs in stop_lines.items()]
-        extra.append('<relation id="61"><member type="way" role="ref_line" ref="52"/>'
-                     '<tag k="type" v="regulatory_element"/><tag k="subtype" v="traffic_sign"/></relation>')
-        write_osm(path, points, {11: (1, 2), 12: (3, 4)}, {21: (11, 12, "road", {}, [61])}, extra)
+                  39: (45, 0),                                   # a single point
+                  40: (31, -1), 41: (31, -0.5)}                  # stop sign
+        ways = {51: ((31, 32), "stop_line", None), 52: ((33, 34, 35), "stop_line", None),
+                53: ((36, 37, 38), "stop_line", None), 54: ((39,), "stop_line", None),
+                55: ((40, 41), "traffic_sign", "stop_sign")}
+        extra = self.typed_ways(ways) + self.reg_elems({61: ("traffic_sign", {"refers": [55], "ref_line": [52]}),
+                                                        62: ("road_marking", {"refers": [51]})})
+        write_osm(path, points, {11: (1, 2), 12: (3, 4)}, {21: (11, 12, "road", {}, [61, 62])}, extra)
 
         ext = extmod.load(extmod.discover()["stopline"])
         out, text = run_extensions([ext], path)
@@ -145,13 +162,68 @@ class ExtensionTest(unittest.TestCase):
         self.assertIn("stop_line 53: 3 points (polyline), should be a straight line of 2 points; node 36 is 0.00 m", text)
         self.assertIn("stop_line 54: only 1 point(s), a stop line needs 2", text)
         self.assertNotIn("stop_line 51", text)
-        self.assertIn("stop lines not referenced by any regulatory element: 51 53 54", text)
+        self.assertIn("stop lines not referenced by any regulatory element: 53 54", text)
+        self.assertIn("2 regulatory elements checked (1 traffic_sign, 1 road_marking): 0 WARNING, 0 ERROR", text)
 
         for ignored in ("52", "21"):  # the stop line itself, or the lanelet referencing it
             with self.subTest(ignored=ignored):
                 out, text = run_extensions([ext], path, ignore={"stopline": {ignored: ""}})
                 self.assertEqual(out.count["stopline"], 1, text)
                 self.assertEqual(out.suppressed[("stopline", ignored)], 1)
+
+    def test_stopline_reg_elems(self):
+        """stopline: traffic_sign refers the sign and ref_line the stop line, road_marking refers exactly one stop line
+        and no ref_line; a traffic sign other than a stop sign needs no stop line; ignored by the regulatory element id
+        or one of its ways, which the ignore report names as such"""
+        path = os.path.join(self.tmp, "stopline_regs.osm")
+        points = {1: (0, 3.5), 2: (50, 3.5), 3: (0, 0), 4: (50, 0),
+                  31: (10, 0), 32: (10, 3.5), 33: (20, 0), 34: (20, 3.5), 35: (30, 0), 36: (30, 3.5),
+                  40: (11, -1), 41: (11, -0.5), 42: (21, -1), 43: (21, -0.5)}
+        ways = {51: ((31, 32), "stop_line", None), 52: ((33, 34), "stop_line", None),
+                53: ((35, 36), "line_thin", "solid"),  # a stop line drawn with the wrong type
+                55: ((40, 41), "traffic_sign", "stop_sign"), 56: ((42, 43), "traffic_sign", "speed_limit")}
+        regs = {61: ("traffic_sign", {"refers": [55, 51]}),                    # stop line in refers, no ref_line
+                62: ("traffic_sign", {"refers": [56]}),                        # not a stop sign: no stop line needed
+                63: ("traffic_sign", {"refers": [55], "ref_line": [53]}),      # ref_line is not a stop_line
+                64: ("traffic_sign", {"ref_line": [52]}),                      # no sign
+                65: ("road_marking", {"refers": [53]}),                        # line is not a stop_line
+                66: ("road_marking", {"refers": [51, 52]}),                    # 2 lines
+                67: ("road_marking", {"refers": [52], "ref_line": [51]}),      # ref_line
+                68: ("road_marking", {"refers": [999]}),                       # way missing from the map
+                69: ("traffic_sign", {"refers": [55, 51], "ref_line": [52]})}  # extra stop line in refers, unused
+        write_osm(path, points, {11: (1, 2), 12: (3, 4)}, {21: (11, 12, "road", {}, list(range(61, 69)))},
+                  self.typed_ways(ways) + self.reg_elems(regs))
+
+        ext = extmod.load(extmod.discover()["stopline"])
+        out, text = run_extensions([ext], path)
+        self.assertEqual((out.count["stopline"], out.errors["stopline"]), (4, 4), text)
+        self.assertIn("[ERROR] traffic_sign 61: no stop line (ref_line): Autoware's stop_line module stops at the "
+                      "ref_line, the vehicle does not stop at this sign; stop line way 51 is in role refers, change its "
+                      "role to ref_line | lanelet 21 at (10.0, 1.8)", text)
+        self.assertNotIn("traffic_sign 62", text)
+        self.assertIn("[WARNING] traffic_sign 63: ref_line way 53 has type=line_thin, not stop_line", text)
+        self.assertIn("[ERROR] traffic_sign 64: no traffic sign (refers way with type=traffic_sign)", text)
+        self.assertIn("[WARNING] road_marking 65: refers way 53 has type=line_thin, not stop_line: Autoware does not "
+                      "use it as a stop line | lanelet 21 at (30.0, 1.8)", text)
+        self.assertIn("[ERROR] road_marking 66: 2 refers, a road_marking must reference exactly one line", text)
+        self.assertIn("[WARNING] road_marking 67: ref_line 51: a road_marking references its stop line with refers "
+                      "only", text)
+        self.assertIn("[ERROR] road_marking 68: refers 999 is not a way of the map", text)
+        self.assertIn("[WARNING] traffic_sign 69: stop line way 51 is in role refers, a stop line belongs in ref_line "
+                      "| not referenced by any lanelet", text)
+        self.assertIn("9 regulatory elements checked (5 traffic_sign, 4 road_marking): 4 WARNING, 4 ERROR", text)
+        self.assertNotIn("stop lines not referenced", text)
+
+        out, text = run_extensions([ext], path, ignore={"stopline": {"65": "", "53": ""}})
+        self.assertEqual((out.count["stopline"], out.errors["stopline"]), (2, 4), text)
+        self.assertEqual((out.suppressed[("stopline", "65")], out.suppressed[("stopline", "53")]), (1, 2))
+        buf = io.StringIO()
+        with contextlib.redirect_stdout(buf):
+            report_ignored([("stopline", "65", ""), ("stopline", "53", ""), ("stopline", "21", "")],
+                           os.path.join(self.tmp, "none.yaml"), MapContext.from_file(path, OPTS), out)
+        self.assertIn("reg_elem 65       [stopline] 1 issue(s) suppressed", buf.getvalue())
+        self.assertIn("way      53       [stopline] 2 issue(s) suppressed", buf.getvalue())
+        self.assertIn("lanelet  21       [stopline] 0 issue(s) suppressed", buf.getvalue())
 
     def write_traffic_light_map(self, regs, lanelet_regs):
         """

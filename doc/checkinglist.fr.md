@@ -13,7 +13,7 @@ Ce document liste tout ce que `check_lanelet_map.py` vérifie actuellement, et l
 | 3 | `autoware` | Tout le fichier de carte | `autoware_checking: true` (actuellement `false`), nécessite de sourcer ROS | WARNING / ERROR |
 | Extension | `altitude` | Altitude `ele` des nœuds des bordures des lanelets véhicule | `enable: true` (actuellement activée) | WARNING |
 | Extension | `crosswalk` | Lanelets `subtype=crosswalk` | `enable: true` (actuellement activée) | WARNING |
-| Extension | `stopline` | Ways `type=stop_line` | `enable: true` (actuellement activée) | WARNING / ERROR |
+| Extension | `stopline` | Ways `type=stop_line`, éléments de régulation `subtype=traffic_sign` / `road_marking` | `enable: true` (actuellement activée) | WARNING / ERROR |
 | Extension | `border_sharing` | Paires de lanelets véhicule côte à côte | `enable: true` (actuellement désactivée) | WARNING |
 | Extension | `trafficlight` | Éléments de régulation `subtype=traffic_light` | `enable: true` (actuellement activée) | WARNING / ERROR |
 | Extension | `_template` | Tags des lanelets véhicule | Jamais automatiquement, seulement avec `--ext _template` | WARNING |
@@ -148,7 +148,9 @@ Objet vérifié : lanelets `subtype=crosswalk`. Valeur actuelle : `max_extension
 
 ## Extension `stopline`
 
-Objet vérifié : tous les ways `type=stop_line` de la carte, qu'ils soient référencés ou non par un élément de régulation. Cette vérification n'a pas de paramètre.
+Cette vérification n'a pas de paramètre.
+
+**Géométrie** : tous les ways `type=stop_line` de la carte, qu'ils soient référencés ou non par un élément de régulation.
 
 | Niveau | Condition | Message |
 |---|---|---|
@@ -156,9 +158,28 @@ Objet vérifié : tous les ways `type=stop_line` de la carte, qu'ils soient réf
 | ERROR | Moins de 2 nœuds | `stop_line <id>: only 1 point(s), a stop line needs 2 \| ...` |
 | ERROR | Référence à des nœuds absents de la carte | `stop_line <id>: references node(s) ... missing from the map \| ...` |
 
-- `| lanelet ...` donne les lanelets qui référencent cette ligne d'arrêt via le `ref_line` d'un élément de régulation, ou `not referenced by any regulatory element` s'il n'y en a pas.
-- Dans la liste d'ignorés, on peut indiquer l'id du way de la ligne d'arrêt ou celui d'une lanelet qui la référence.
+- `| lanelet ...` donne les lanelets qui référencent cette ligne d'arrêt, via le `ref_line` d'un élément de régulation ou le `refers` d'un road_marking, ou `not referenced by any regulatory element` s'il n'y en a pas.
 - Avec `only_check_AOI: true`, seules les lignes d'arrêt entièrement situées dans une AOI sont vérifiées.
+
+**Références** : les éléments de régulation `subtype=traffic_sign` et `subtype=road_marking`, avec les mêmes exigences que `regulatory_element_details_for_traffic_signs` et `road_markings` d'autoware_lanelet2_map_validator.
+
+| Élément | Niveau | Condition | Message |
+|---|---|---|---|
+| traffic_sign | ERROR | Aucun way `type=traffic_sign` dans `refers` | `traffic_sign <id>: no traffic sign (refers way with type=traffic_sign), Autoware does not recognize it as a stop sign \| ...` |
+| traffic_sign | ERROR | Panneau stop (`subtype=stop_sign`, ou pas de panneau) sans `ref_line` : le module stop_line d'Autoware s'arrête devant le `ref_line`. Si la ligne d'arrêt a été mise dans `refers`, le message indique de changer son rôle | `traffic_sign <id>: no stop line (ref_line): ... the vehicle does not stop at this sign; stop line way <s> is in role refers, change its role to ref_line \| ...` |
+| traffic_sign | WARNING | `ref_line` présent, mais `refers` contient aussi une ligne d'arrêt | `traffic_sign <id>: stop line way <s> is in role refers, a stop line belongs in ref_line \| ...` |
+| traffic_sign | WARNING | `refers` contient un way qui n'est ni un panneau ni une ligne d'arrêt | `traffic_sign <id>: refers way <w> has type=..., not traffic_sign \| ...` |
+| traffic_sign | WARNING | Le way de `ref_line` n'est pas `type=stop_line` | `traffic_sign <id>: ref_line way <w> has type=..., not stop_line \| ...` |
+| road_marking | ERROR | Pas exactement un `refers` | `road_marking <id>: 2 refers, a road_marking must reference exactly one line (its stop line) \| ...` |
+| road_marking | WARNING | Le way de `refers` n'est pas `type=stop_line` : Autoware ne l'utilise comme ligne d'arrêt que s'il est `type=stop_line` (par exemple la ligne d'arrêt d'intersection du module intersection) | `road_marking <id>: refers way <w> has type=line_thin, not stop_line: Autoware does not use it as a stop line \| ...` |
+| road_marking | WARNING | `ref_line` présent (sans effet) | `road_marking <id>: ref_line <w>: a road_marking references its stop line with refers only, its ref_line is not used \| ...` |
+| Les deux | ERROR | Un membre n'est pas un way de la carte | `<subtype> <id>: refers <w> is not a way of the map \| ...` |
+
+- `| lanelet ...` donne les lanelets qui référencent cet élément de régulation, ou `not referenced by any lanelet` ; le `at (x, y)` qui suit est le milieu de la ligne d'arrêt (y compris celle mise dans le mauvais rôle).
+- Les panneaux autres que `stop_sign` n'ont pas besoin de `ref_line`.
+- Avec `only_check_AOI: true`, seuls les éléments de régulation dont toutes les lignes sont entièrement situées dans une AOI sont vérifiés.
+
+Dans la liste d'ignorés, on peut indiquer l'id du way de la ligne d'arrêt, l'id de l'élément de régulation ou d'un des ways qu'il référence, ou celui d'une lanelet qui les référence.
 
 ## Extension `border_sharing`
 

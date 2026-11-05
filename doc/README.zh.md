@@ -304,7 +304,7 @@ turn_direction：单个特征换到一张新地图上不起作用（0.47），�
 | [altitude](../ext/altitude/README.md) | 车道边界上高程 `ele` 的突兀点（跳变、尖峰、横坡过大、没有 `ele`），另外在日志目录生成高程趋势图 `<日志名>_altitude.png` |
 | [border_sharing](../ext/border_sharing/README.md) | 并排的车道是否共用中间的边界线；位置重合但各画一条（不同的 way）时报 WARNING，此时不能换道，对向车道之间可能有缝或重叠 |
 | [crosswalk](../ext/crosswalk/README.md) | crosswalk 在横向上最多超出道路多少，超出 `max_extension` 时报 WARNING |
-| [stopline](../ext/stopline/README.md) | 停止线是否只由两个点组成（一条直线而不是折线），多于 2 个点时报 WARNING |
+| [stopline](../ext/stopline/README.md) | 停止线是否只由两个点组成（一条直线而不是折线），多于 2 个点时报 WARNING；traffic_sign 的 `ref_line`、road_marking 的 `refers` 是否为停止线（停止线放错 role 或 `type` 写错时 Autoware 不会在这里停车） |
 | [trafficlight](../ext/trafficlight/README.md) | 红绿灯能否被 Autoware 的 traffic_light 模块和相机匹配使用：灯画反或在停止线后面导致车道上认不出任何灯（车永远不走）、停止线不穿过车道（红灯不停）、一个灯属于多个规则元素、停止线延长后穿过别的同向车道、灯高和灯泡位置 |
 
 **新增扩展检查**：复制模板 `cp -r ext/_template ext/<名称>`，只需写一个 `check(ctx, cfg, out)` 函数；地图读取、配置、忽略列表、日志和热力图都由框架处理。`ctx` 中有地图文件的全部信息（所有节点、way、relation 的标签和几何）和共享的计算结果（如 lanelet 重叠、前后继关系），不用改地图读取代码，也不用重复计算。步骤和接口见 [ext/README.md](../ext/README.md)。`python3 -m unittest discover -s tests` 会自动加载 `ext/` 下的每个扩展，在一张合成地图上运行一次。
@@ -327,7 +327,7 @@ MapChecker/
     altitude/                 车道高程的突兀点，并生成高程趋势图
     border_sharing/           并排的车道是否共用边界线
     crosswalk/                crosswalk 在横向上最多超出道路多少
-    stopline/                 停止线是否为两点直线
+    stopline/                 停止线是否为两点直线，traffic_sign / road_marking 是否正确引用停止线
     trafficlight/             红绿灯能否被 Autoware 和相机匹配使用
   tests/                      测试 (python3 -m unittest discover -s tests)
   config/

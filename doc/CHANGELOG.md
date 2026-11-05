@@ -6,6 +6,20 @@
 
 ## [未发布]
 
+### 新增
+
+- **扩展 `stopline`：检查 traffic_sign / road_marking 规则元素对停止线的引用**，要求与 autoware_lanelet2_map_validator 的 `regulatory_element_details_for_traffic_signs`、`road_markings` 一致：
+  - traffic_sign：`refers` 为标志牌，`ref_line` 为停止线。停车标志没有 `ref_line` 时报 ERROR（Autoware 的 stop_line 模块在 `ref_line` 前停车，车辆不会在这里停）；停止线被放进 `refers` 时提示改 role。
+  - road_marking：恰好一个 `refers`，且为 `type=stop_line`；不是时 Autoware 不把它当作停止线（如路口停止线）。
+  - 在现有地图上发现：lanelet2_map 的 traffic_sign 51096 把停止线放进了 `refers`，没有 `ref_line`；lanelet2_map 2 个、buc 4 个 road_marking 引用的停止线是 `type=line_thin`。
+
+  见 [ext/stopline/README.md](../ext/stopline/README.md#引用)。
+
+### 修复
+
+- 扩展 `stopline`：被 road_marking 以 `refers` 引用的停止线以前被列为 "not referenced by any regulatory element"，问题行中也不显示引用它的 lanelet（lanelet2_map 中 21 条里有 20 条是这种情况）。现在算作被引用。
+- 末尾的忽略列表报告中，被忽略的 id 是规则元素、且确实屏蔽了问题时（如 stopline / trafficlight 的规则元素 id），显示为 `reg_elem <id> ... N issue(s) suppressed`，不再误报为 `not found in map`。
+
 ## [3.3.0] - 2026-11-04
 
 ### 新增

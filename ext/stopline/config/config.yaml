@@ -4,7 +4,7 @@
 
 enable: true         # true: check_lanelet_map.py runs this check (ignored when --ext / --only-ext is given)
 
-# Ids ignored by this check, same syntax as config/ignore.yaml: [7731, 7732: reason]; either the stop line (way id)
-# or a lanelet referencing it (can also be written under stopline: in config/ignore.yaml; lanelets under all: are
-# also ignored in this check)
+# Ids ignored by this check, same syntax as config/ignore.yaml: [7731, 7732: reason]; the stop line (way id), a
+# traffic_sign / road_marking regulatory element or one of its ways, or a lanelet referencing them (can also be written
+# under stopline: in config/ignore.yaml; lanelets under all: are also ignored in this check)
 ignore: []

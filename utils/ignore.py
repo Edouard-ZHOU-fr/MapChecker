@@ -80,8 +80,11 @@ def report_ignored(entries, ignore_path, ctx, out):
         return
     for scope, lid, reason in entries:
         n = sum(out.suppressed[(c, lid)] for c in (out.ignore if scope == "all" else (scope,)))
-        # an extension check may also report issues of other elements by their id (e.g. stopline: the stop line way)
-        other = lid not in ctx.lanelets and lid in ctx.ways and n > 0
+        # an extension check may also report issues of other elements by their id (e.g. stopline: the stop line way or
+        # the traffic_sign / road_marking regulatory element; trafficlight: the regulatory element)
+        other = None
+        if lid not in ctx.lanelets and n > 0:
+            other = "way" if lid in ctx.ways else "reg_elem" if lid in ctx.reg_elems else None
         if scope != "all" and scope not in out.ignore:
             status = "check not run"
         elif other:
@@ -92,4 +95,4 @@ def report_ignored(entries, ignore_path, ctx, out):
             status = "outside AOI"
         else:
             status = f"{n} issue(s) suppressed"
-        out.info(f"{'way' if other else 'lanelet':<7} {lid:<8} [{scope}] {status}" + (f" | {reason}" if reason else ""))
+        out.info(f"{other or 'lanelet':<8} {lid:<8} [{scope}] {status}" + (f" | {reason}" if reason else ""))

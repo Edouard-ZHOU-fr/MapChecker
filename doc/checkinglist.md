@@ -13,7 +13,7 @@
 | 3 | `autoware` | 整个地图文件 | `autoware_checking: true`（当前 `false`），需要 source ROS | WARNING / ERROR |
 | 扩展 | `altitude` | 车辆 lanelet 边界节点的高程 `ele` | `enable: true`（当前开启） | WARNING |
 | 扩展 | `crosswalk` | `subtype=crosswalk` 的 lanelet | `enable: true`（当前开启） | WARNING |
-| 扩展 | `stopline` | `type=stop_line` 的 way | `enable: true`（当前开启） | WARNING / ERROR |
+| 扩展 | `stopline` | `type=stop_line` 的 way、`subtype=traffic_sign` / `road_marking` 的规则元素 | `enable: true`（当前开启） | WARNING / ERROR |
 | 扩展 | `border_sharing` | 并排的车辆 lanelet 对 | `enable: true`（当前关闭） | WARNING |
 | 扩展 | `trafficlight` | `subtype=traffic_light` 的规则元素 | `enable: true`（当前开启） | WARNING / ERROR |
 | 扩展 | `_template` | 车辆 lanelet 的标签 | 不自动运行，只在 `--ext _template` 时运行 | WARNING |
@@ -148,7 +148,9 @@
 
 ## 扩展检查 `stopline`
 
-检查对象：地图中所有 `type=stop_line` 的 way，不论是否被规则元素引用。本检查没有参数。
+本检查没有参数。
+
+**几何**：检查地图中所有 `type=stop_line` 的 way，不论是否被规则元素引用。
 
 | 级别 | 输出条件 | 输出信息 |
 |---|---|---|
@@ -156,9 +158,28 @@
 | ERROR | 少于 2 个节点 | `stop_line <id>: only 1 point(s), a stop line needs 2 \| ...` |
 | ERROR | 引用了地图中不存在的节点 | `stop_line <id>: references node(s) ... missing from the map \| ...` |
 
-- `| lanelet ...` 为通过规则元素的 `ref_line` 引用这条停止线的 lanelet，没有时为 `not referenced by any regulatory element`。
-- 忽略列表中既可以写停止线的 way id，也可以写引用它的 lanelet id。
+- `| lanelet ...` 为引用这条停止线的 lanelet：通过规则元素的 `ref_line`，或 road_marking 的 `refers`。没有时为 `not referenced by any regulatory element`。
 - `only_check_AOI: true` 时只检查完全位于 AOI 内的停止线。
+
+**引用**：检查 `subtype=traffic_sign` 和 `subtype=road_marking` 的规则元素，要求与 autoware_lanelet2_map_validator 的 `regulatory_element_details_for_traffic_signs`、`road_markings` 一致。
+
+| 规则元素 | 级别 | 输出条件 | 输出信息 |
+|---|---|---|---|
+| traffic_sign | ERROR | `refers` 中没有 `type=traffic_sign` 的 way | `traffic_sign <id>: no traffic sign (refers way with type=traffic_sign), Autoware does not recognize it as a stop sign \| ...` |
+| traffic_sign | ERROR | 停车标志（`subtype=stop_sign`，或没有标志牌）没有 `ref_line`：Autoware 的 stop_line 模块在 `ref_line` 前停车。停止线被放进 `refers` 时提示改 role | `traffic_sign <id>: no stop line (ref_line): ... the vehicle does not stop at this sign; stop line way <s> is in role refers, change its role to ref_line \| ...` |
+| traffic_sign | WARNING | 有 `ref_line`，`refers` 中还有停止线 | `traffic_sign <id>: stop line way <s> is in role refers, a stop line belongs in ref_line \| ...` |
+| traffic_sign | WARNING | `refers` 中有既不是标志牌也不是停止线的 way | `traffic_sign <id>: refers way <w> has type=..., not traffic_sign \| ...` |
+| traffic_sign | WARNING | `ref_line` 的 way 不是 `type=stop_line` | `traffic_sign <id>: ref_line way <w> has type=..., not stop_line \| ...` |
+| road_marking | ERROR | `refers` 不是正好一个 | `road_marking <id>: 2 refers, a road_marking must reference exactly one line (its stop line) \| ...` |
+| road_marking | WARNING | `refers` 的 way 不是 `type=stop_line`：Autoware 只有在 `type=stop_line` 时才把它当作停止线（如 intersection 模块的路口停止线） | `road_marking <id>: refers way <w> has type=line_thin, not stop_line: Autoware does not use it as a stop line \| ...` |
+| road_marking | WARNING | 有 `ref_line`（不起作用） | `road_marking <id>: ref_line <w>: a road_marking references its stop line with refers only, its ref_line is not used \| ...` |
+| 两者 | ERROR | 成员不是地图中的 way | `<subtype> <id>: refers <w> is not a way of the map \| ...` |
+
+- `| lanelet ...` 为引用这个规则元素的 lanelet，没有时为 `not referenced by any lanelet`；后面的 `at (x, y)` 为停止线（包括放错 role 的）的中点。
+- `stop_sign` 以外的交通标志不要求有 `ref_line`。
+- `only_check_AOI: true` 时只检查引用的所有线都完全位于 AOI 内的规则元素。
+
+忽略列表中可以写停止线的 way id、规则元素的 id 或它引用的 way id，也可以写引用它们的 lanelet id。
 
 ## 扩展检查 `border_sharing`
 
