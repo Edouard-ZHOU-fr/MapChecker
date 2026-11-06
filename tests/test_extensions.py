@@ -398,7 +398,7 @@ class ExtensionTest(unittest.TestCase):
         self.assertIn("lanelet 41 left (12 nodes over max)", text)
 
         ext = extmod.load(extmod.discover()["altitude"], {"ignore": [41]})
-        prefix = os.path.join(self.tmp, "logs", "map_check")
+        prefix = os.path.join(self.tmp, "logs", "map_check", "map_check")  # directory of the run not created yet
         out, text = run_extensions([ext], path, prefix, ignore={"altitude": ext.cfg["ignore"]})
         self.assertEqual(out.count["altitude"], 0)
         self.assertGreater(out.suppressed[("altitude", "41")], 0)

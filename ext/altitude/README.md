@@ -11,7 +11,7 @@ MapChecker 的扩展检查：检查车道（车辆 lanelet：`road`、`highway`�
 - 结果写入终端输出和日志。
 - Summary 中列出 `altitude warnings`，并计入退出码。
 - 热力图中用绿色的点标出突兀点，不参与着色和问题频发区域的判定。
-- 在日志目录中生成高程趋势图 `map_check_YYYYmmdd_HHMMSS_altitude.png`，与日志同名。
+- 在本次运行的输出目录（日志所在目录）中生成高程趋势图 `map_check_YYYYmmdd_HHMMSS_altitude.png`，与日志同名。
 
 单独运行（不看 `enable`，跳过检查 1~3）：
 
@@ -67,7 +67,7 @@ python3 check_lanelet_map.py --only-ext altitude --set altitude.plot=false      
 ...
 elevation 169.34 ~ 192.13 m; slope between adjacent nodes: median 0.0%, 99% 15.7%; cross slope: median 0.0%, 99% 10.7% (node pairs >= 1 m apart)
 581 vehicle lanelets (5381 nodes) checked: 54 steps, 4 spikes, 6 cross slopes, 4 ignored
-Trend chart: /home/.../MapChecker/logs/map_check_20261021_142946_altitude.png
+Trend chart: /home/.../MapChecker/logs/map_check_20261021_142946/map_check_20261021_142946_altitude.png
 ```
 
 `|` 后为突兀点所在的边界（`lanelet 693 right` 即 lanelet 693 的右边界）和坐标。倒数第三行是坡度的分布（只用水平距离不小于 1 m 的点对），可用于调整阈值。

@@ -77,11 +77,11 @@ python3 check_lanelet_map.py --only-ext crosswalk     # 只运行扩展检查 cr
 | `ignore_file` | `config/ignore.yaml` | 手动忽略的 lanelet，文件不存在时不忽略 |
 | `issue_codes_file` | `config/issue_codes.yaml` | 检查 1~3 的 issue code 及其级别和说明（扩展的在 `ext/<名称>/config/issue_codes.yaml` 中），见 [issue code](#issue-code-issue_codesyaml) |
 | `model_file` | `config/model.yaml` | 告警打分模型，`Using_LR: true` 时使用 |
-| `log.enabled` / `log.dir` | `false` / `logs` | 终端输出的同时写入日志 `logs/map_check_YYYYmmdd_HHMMSS.log` |
-| `heatmap.enabled` | `false` | `true`：在报告末尾列出问题频发的区域，并在 `log.dir` 生成同名的热力图 `map_check_YYYYmmdd_HHMMSS.png`，需要 matplotlib |
+| `log.enabled` / `log.dir` | `false` / `logs` | 终端输出的同时写入日志 `logs/map_check_YYYYmmdd_HHMMSS/map_check_YYYYmmdd_HHMMSS.log`。每次运行的所有输出文件（日志、热力图、masque、扩展生成的文件）都放在 `log.dir` 下新建的目录 `map_check_YYYYmmdd_HHMMSS/` 中（同一秒内启动的多次运行加后缀 `_2`、`_3`…） |
+| `heatmap.enabled` | `false` | `true`：在报告末尾列出问题频发的区域，并在日志旁生成同名的热力图 `map_check_YYYYmmdd_HHMMSS.png`，需要 matplotlib |
 | `heatmap.radius` | `30.0` | 区域半径（米）：相距不超过 `radius` 的问题算同一区域，热力图的扩散范围约为 `radius` |
 | `heatmap.top` | `10` | 最多标注几个区域（至少有 2 条问题才算） |
-| `masque.enabled` | `false` | `true`：同时在 `log.dir` 中生成问题频发区域的减速 masque `map_check_YYYYmmdd_HHMMSS_masque.osm`，见[减速 masque](#减速-masque-masque)；需要 `heatmap.enabled` |
+| `masque.enabled` | `false` | `true`：同时在日志旁生成问题频发区域的减速 masque `map_check_YYYYmmdd_HHMMSS_masque.osm`，见[减速 masque](#减速-masque-masque)；需要 `heatmap.enabled` |
 | `masque.subtype` | `mapchecker_hotspot` | masque 区域的 `subtype`（减速原因） |
 | `masque.slow_down_speed` | `15` | masque 区域的 `slow_down_speed` 标签（km/h） |
 | `masque.height` | `0.2` | masque 区域的 `height` 标签 |
@@ -153,14 +153,14 @@ python3 utils/validate_autoware_map.py lanelet2_map.osm
 
 ## 问题热力图 (`heatmap`)
 
-一张地图的告警常常集中在几个路口。打开 `heatmap.enabled` 后，报告末尾会列出问题最多的区域，并在日志目录生成与日志同名的 `.png`，方便先处理问题最集中的地方：
+一张地图的告警常常集中在几个路口。打开 `heatmap.enabled` 后，报告末尾会列出问题最多的区域，并在日志旁生成与日志同名的 `.png`，方便先处理问题最集中的地方：
 
 ```
 === Hotspots (at least 2 issues within 30 m) ===
 #1  center (67932.7, 6497.8): 16 issues (turn_direction 8, right_of_way 8), lanelets: 3973 4060 4081 4095 4102 4107 4134 4167 4202 4313
 #2  center (68200.6, 6151.5): 13 issues (right_of_way 9, turn_direction 4), lanelets: 2690 3668 3676 3690 3698 5595 6165 6811 6866
 ...
-Heatmap: .../logs/map_check_20261016_093357.png
+Heatmap: .../logs/map_check_20261016_093357/map_check_20261016_093357.png
 ```
 
 - **位置**：检查 1 的告警取 lanelet 中心线的中点（即日志中的 `middle`），检查 2 缺少 `right_of_way` 的告警取重叠区的中心，其他告警取相关 lanelet 中点的平均；与 lanelet 无关的告警（节点缺少高度、地图加载错误）不参与。被忽略的告警不参与。
@@ -181,10 +181,10 @@ Heatmap: .../logs/map_check_20261016_093357.png
 
 ## 减速 masque (`masque`)
 
-`masque.enabled: true`（或 `--masque`）且热力图开启时，Hotspots 中的区域同时写入日志目录中单独的 OSM 文件 `map_check_YYYYmmdd_HHMMSS_masque.osm`，格式与在 VMB 中手工编辑的 `masque_lanelet2.osm` 相同，让车辆在地图问题最集中的地方减速：
+`masque.enabled: true`（或 `--masque`）且热力图开启时，Hotspots 中的区域同时写入日志旁单独的 OSM 文件 `map_check_YYYYmmdd_HHMMSS_masque.osm`，格式与在 VMB 中手工编辑的 `masque_lanelet2.osm` 相同，让车辆在地图问题最集中的地方减速：
 
 ```
-Masque: .../logs/map_check_20261027_115711_masque.osm (10 detection_area, subtype=mapchecker_hotspot, slow_down_speed=15, margin 3 m)
+Masque: .../logs/map_check_20261027_115711/map_check_20261027_115711_masque.osm (10 detection_area, subtype=mapchecker_hotspot, slow_down_speed=15, margin 3 m)
   way 5: hotspot #1, 58.4 x 26.2 m, center (31471.6, 9692.2)
   way 10: hotspot #2, 12.3 x 11.7 m, center (30962.8, 11223.4)
 ```
@@ -383,5 +383,5 @@ MapChecker/
     tranning.py               训练 logistic regression
   libs/                       install.sh 安装的第三方库 (不提交)
   data/                       训练数据 (不提交)
-  logs/                       日志和热力图 (不提交)
+  logs/                       每次运行一个目录：日志、热力图、masque 等 (不提交)
 ```

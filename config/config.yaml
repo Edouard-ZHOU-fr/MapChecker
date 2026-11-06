@@ -18,12 +18,14 @@ model_file: config/model.yaml
 # Log output
 log:
   enabled: true      # true: write to a log file (without colors) in addition to the terminal output
-  dir: logs          # log directory, the file name is map_check_YYYYmmdd_HHMMSS.log
+  dir: logs          # log directory: each run writes all its output files (log, heatmap, masque, files of the
+                     #   extension checks) in a new directory map_check_YYYYmmdd_HHMMSS/ of it, named like it,
+                     #   e.g. logs/map_check_YYYYmmdd_HHMMSS/map_check_YYYYmmdd_HHMMSS.log
 
 # Issue heatmap (requires matplotlib)
 heatmap:
   enabled: true      # true: list the areas with the most issues (Hotspots) at the end of the report,
-                     #   and generate a map_check_YYYYmmdd_HHMMSS.png with the same name in the log directory:
+                     #   and generate a map_check_YYYYmmdd_HHMMSS.png with the same name next to the log:
                      #   color the map by issue density from blue (few) to red (many), and circle these areas (#rank issue count);
                      #   when Using_LR is true, weighted by p: a scored WARNING counts as p issues, the others as 1,
                      #   i.e. the expected number of true issues
@@ -32,7 +34,7 @@ heatmap:
 
 # Slow-down masque generated from the Hotspots above (requires heatmap.enabled)
 masque:
-  enabled: false     # true: also write map_check_YYYYmmdd_HHMMSS_masque.osm in the log directory, a separate OSM file in
+  enabled: false     # true: also write map_check_YYYYmmdd_HHMMSS_masque.osm next to the log, a separate OSM file in
                      #   the same format as the masque_lanelet2.osm of the map repositories: one area per hotspot
                      #   (4 nodes + a way with type=detection_area, area=yes), the smallest rectangle containing the
                      #   issues of the hotspot enlarged by margin; lat/lon, local_x/y and ele of the nodes come from the map

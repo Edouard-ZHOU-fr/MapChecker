@@ -116,17 +116,23 @@ class MasqueTest(unittest.TestCase):
     def test_cli(self):
         r = self.cli("--masque")
         self.assertEqual(r.returncode, 1, r.stdout + r.stderr)
-        files = glob.glob(os.path.join(self.tmp, "logs", "*_masque.osm"))
+        files = glob.glob(os.path.join(self.tmp, "logs", "*", "*_masque.osm"))
         self.assertEqual(len(files), 1, r.stdout)
         self.assertIn(f"Masque saved to: {files[0]}", r.stdout)
+        # all the output files of a run are in a new directory of the log directory, named like it
+        run_dir = os.path.dirname(files[0])
+        name = os.path.basename(run_dir)
+        self.assertRegex(name, r"^map_check_\d{8}_\d{6}$")
+        self.assertEqual(sorted(os.listdir(run_dir)), [f"{name}.log", f"{name}.png", f"{name}_masque.osm"])
         self.assertIn("way 5: hotspot #1", r.stdout)
         masque = load_map(files[0])
         self.assertEqual(list(masque.ways), ["5"])
         self.assertEqual(masque.ways["5"].tags["subtype"], "mapchecker_hotspot")
 
-        # off by default; requires the heatmap
+        # off by default; requires the heatmap. Each run has its own directory, even in the same second
         self.cli()
-        self.assertEqual(len(glob.glob(os.path.join(self.tmp, "logs", "*_masque.osm"))), 1)
+        self.assertEqual(len(glob.glob(os.path.join(self.tmp, "logs", "*", "*_masque.osm"))), 1)
+        self.assertEqual(len(glob.glob(os.path.join(self.tmp, "logs", "*", "*.log"))), 2)
         r = self.cli("--masque", "--no-heatmap")
         self.assertEqual(r.returncode, 2)
         self.assertIn("requires the heatmap", r.stderr)

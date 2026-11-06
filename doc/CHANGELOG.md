@@ -29,6 +29,7 @@
 - 输出行的前缀由 `[WARNING]` / `[ERROR]` / `[WARNING p=0.77]` 变为 `[WARNING code]` / `[ERROR code]` / `[WARNING code p=0.77]`。
 - `utils.validate_autoware_map.Result` 的 `load` 和 `traffic_light` 中每条问题带上 code：`[(code, 信息)]` / `[(code, 信息, lanelet ids)]`。
 - 扩展的 `out.ignored` 改为按问题计数（原来按被忽略的 id 计数，一条问题涉及多个被忽略的 id 时会多计）。
+- 每次运行的所有输出文件（日志、热力图、masque、扩展生成的文件如 altitude 趋势图）改为放在 `log.dir` 下新建的目录 `map_check_YYYYmmdd_HHMMSS/` 中，文件名不变（如 `logs/map_check_20261106_141000/map_check_20261106_141000.log`）；同一秒内启动的多次运行加后缀 `_2`、`_3`…，不再互相覆盖。`ctx.output_prefix` 相应地指向该目录中的文件。
 
 ### 修复
 

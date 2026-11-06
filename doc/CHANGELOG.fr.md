@@ -29,6 +29,7 @@ Ce fichier recense les principales évolutions de chaque version de MapChecker, 
 - Le préfixe des lignes passe de `[WARNING]` / `[ERROR]` / `[WARNING p=0.77]` à `[WARNING code]` / `[ERROR code]` / `[WARNING code p=0.77]`.
 - Dans `utils.validate_autoware_map.Result`, chaque problème de `load` et `traffic_light` porte son code : `[(code, message)]` / `[(code, message, ids de lanelet)]`.
 - `out.ignored` des extensions compte désormais les problèmes (auparavant les id ignorés : un problème concernant plusieurs id ignorés était compté plusieurs fois).
+- Chaque exécution écrit désormais tous ses fichiers de sortie (log, carte de chaleur, masque, fichiers des extensions comme la courbe d'altitude) dans un nouveau répertoire `map_check_YYYYmmdd_HHMMSS/` de `log.dir`, sous les mêmes noms qu'avant (par exemple `logs/map_check_20261106_141000/map_check_20261106_141000.log`) ; des exécutions lancées dans la même seconde reçoivent un suffixe `_2`, `_3`… et ne s'écrasent plus. `ctx.output_prefix` désigne en conséquence les fichiers de ce répertoire.
 
 ### Corrigé
 

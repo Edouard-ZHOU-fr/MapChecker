@@ -77,11 +77,11 @@ Les chemins relatifs sont relatifs à `MapChecker/`.
 | `ignore_file` | `config/ignore.yaml` | Lanelets ignorées manuellement ; si le fichier n'existe pas, rien n'est ignoré |
 | `issue_codes_file` | `config/issue_codes.yaml` | Codes de problème des vérifications 1 à 3 avec leur niveau et leur description (ceux des extensions sont dans `ext/<nom>/config/issue_codes.yaml`), voir [Codes de problème](#codes-de-problème-issue_codesyaml) |
 | `model_file` | `config/model.yaml` | Modèle de notation des alertes, utilisé avec `Using_LR: true` |
-| `log.enabled` / `log.dir` | `false` / `logs` | Écrit, en plus de la sortie terminal, le log `logs/map_check_YYYYmmdd_HHMMSS.log` |
-| `heatmap.enabled` | `false` | `true` : liste en fin de rapport les zones à forte concentration de problèmes et génère dans `log.dir` une carte de chaleur du même nom `map_check_YYYYmmdd_HHMMSS.png` ; nécessite matplotlib |
+| `log.enabled` / `log.dir` | `false` / `logs` | Écrit, en plus de la sortie terminal, le log `logs/map_check_YYYYmmdd_HHMMSS/map_check_YYYYmmdd_HHMMSS.log`. Chaque exécution écrit tous ses fichiers de sortie (log, carte de chaleur, masque, fichiers des extensions) dans un nouveau répertoire `map_check_YYYYmmdd_HHMMSS/` de `log.dir` (suffixe `_2`, `_3`… pour des exécutions lancées dans la même seconde) |
+| `heatmap.enabled` | `false` | `true` : liste en fin de rapport les zones à forte concentration de problèmes et génère à côté du log une carte de chaleur du même nom `map_check_YYYYmmdd_HHMMSS.png` ; nécessite matplotlib |
 | `heatmap.radius` | `30.0` | Rayon des zones (m) : les problèmes distants d'au plus `radius` appartiennent à la même zone ; la diffusion de la carte de chaleur est d'environ `radius` |
 | `heatmap.top` | `10` | Nombre maximal de zones annotées (une zone doit compter au moins 2 problèmes) |
-| `masque.enabled` | `false` | `true` : génère aussi le masque de ralentissement des zones `map_check_YYYYmmdd_HHMMSS_masque.osm` dans `log.dir`, voir [Masque de ralentissement](#masque-de-ralentissement-masque) ; nécessite `heatmap.enabled` |
+| `masque.enabled` | `false` | `true` : génère aussi le masque de ralentissement des zones `map_check_YYYYmmdd_HHMMSS_masque.osm` à côté du log, voir [Masque de ralentissement](#masque-de-ralentissement-masque) ; nécessite `heatmap.enabled` |
 | `masque.subtype` | `mapchecker_hotspot` | `subtype` des zones du masque (raison du ralentissement) |
 | `masque.slow_down_speed` | `15` | Tag `slow_down_speed` des zones du masque (km/h) |
 | `masque.height` | `0.2` | Tag `height` des zones du masque |
@@ -153,14 +153,14 @@ python3 utils/validate_autoware_map.py lanelet2_map.osm
 
 ## Carte de chaleur des problèmes (`heatmap`)
 
-Les alertes d'une carte se concentrent souvent sur quelques intersections. Avec `heatmap.enabled`, la fin du rapport liste les zones qui ont le plus de problèmes, et un `.png` du même nom que le log est généré dans le répertoire des logs, pour traiter en premier les endroits où les problèmes sont les plus concentrés :
+Les alertes d'une carte se concentrent souvent sur quelques intersections. Avec `heatmap.enabled`, la fin du rapport liste les zones qui ont le plus de problèmes, et un `.png` du même nom que le log est généré à côté de lui, pour traiter en premier les endroits où les problèmes sont les plus concentrés :
 
 ```
 === Hotspots (at least 2 issues within 30 m) ===
 #1  center (67932.7, 6497.8): 16 issues (turn_direction 8, right_of_way 8), lanelets: 3973 4060 4081 4095 4102 4107 4134 4167 4202 4313
 #2  center (68200.6, 6151.5): 13 issues (right_of_way 9, turn_direction 4), lanelets: 2690 3668 3676 3690 3698 5595 6165 6811 6866
 ...
-Heatmap: .../logs/map_check_20261016_093357.png
+Heatmap: .../logs/map_check_20261016_093357/map_check_20261016_093357.png
 ```
 
 - **Position** : une alerte de la vérification 1 est placée au milieu de la ligne centrale de la lanelet (le `middle` du log), une alerte de `right_of_way` manquant de la vérification 2 au centre de la zone de chevauchement, les autres alertes à la moyenne des milieux des lanelets concernées ; les alertes sans lien avec une lanelet (nœud sans altitude, erreur de chargement de la carte) ne sont pas prises en compte. Les alertes ignorées ne sont pas prises en compte.
@@ -181,10 +181,10 @@ Heatmap: .../logs/map_check_20261016_093357.png
 
 ## Masque de ralentissement (`masque`)
 
-Avec `masque.enabled: true` (ou `--masque`) et la carte de chaleur activée, les zones des Hotspots sont aussi écrites dans un fichier OSM séparé `map_check_YYYYmmdd_HHMMSS_masque.osm` du répertoire des logs, au même format que les `masque_lanelet2.osm` édités à la main dans VMB, pour que le véhicule ralentisse là où la carte a le plus de problèmes :
+Avec `masque.enabled: true` (ou `--masque`) et la carte de chaleur activée, les zones des Hotspots sont aussi écrites dans un fichier OSM séparé `map_check_YYYYmmdd_HHMMSS_masque.osm` à côté du log, au même format que les `masque_lanelet2.osm` édités à la main dans VMB, pour que le véhicule ralentisse là où la carte a le plus de problèmes :
 
 ```
-Masque: .../logs/map_check_20261027_115711_masque.osm (10 detection_area, subtype=mapchecker_hotspot, slow_down_speed=15, margin 3 m)
+Masque: .../logs/map_check_20261027_115711/map_check_20261027_115711_masque.osm (10 detection_area, subtype=mapchecker_hotspot, slow_down_speed=15, margin 3 m)
   way 5: hotspot #1, 58.4 x 26.2 m, center (31471.6, 9692.2)
   way 10: hotspot #2, 12.3 x 11.7 m, center (30962.8, 11223.4)
 ```
@@ -383,5 +383,5 @@ MapChecker/
     tranning.py               entraînement de la régression logistique
   libs/                       bibliothèques tierces installées par install.sh (non versionnées)
   data/                       données d'entraînement (non versionnées)
-  logs/                       logs et cartes de chaleur (non versionnés)
+  logs/                       un répertoire par exécution : log, carte de chaleur, masque… (non versionnés)
 ```

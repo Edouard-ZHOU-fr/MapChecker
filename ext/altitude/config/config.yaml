@@ -11,7 +11,7 @@ max_cross_slope: 0.20  # max cross slope between a point on one boundary of a la
 min_step: 0.5          # height differences below it (m) are not reported, to avoid false reports from measurement
                        #   noise and nearly coincident points
 
-# Elevation trend chart: map_check_YYYYmmdd_HHMMSS_altitude.png in the log directory, named like the log
+# Elevation trend chart: map_check_YYYYmmdd_HHMMSS_altitude.png next to the log, named like it
 # (requires matplotlib)
 plot: true             # true: generate the trend chart (top: top view with lanes colored by elevation; bottom:
                        #   elevation profiles of the lanes with abrupt points)

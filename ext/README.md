@@ -92,7 +92,7 @@ ext/my_check/
 | `ctx.overlaps` | 几何重叠的车辆 lanelet 对 `[(a_id, b_id, rel, 面积, 中心, 长度)]`，`rel` 为 `None`（交叉）/ `"merge"` / `"diverge"`；与检查 1、2 共用，只算一次 |
 | `ctx.topology` | 前后继关系 `(succ, pred)`：`{lanelet id: 后继 / 前继 id 的集合}` |
 | `ctx.opts` / `ctx.aois` / `ctx.map_path` | 检查参数（`config/config.yaml` 合并命令行）/ AOI 多边形 / 地图路径 |
-| `ctx.output_prefix` | 本次运行的日志 / 热力图的路径前缀（如 `logs/map_check_20261021_141000`）。扩展生成的其他文件（如图）命名为 `f"{ctx.output_prefix}_{out.category}.png"`，目录可能还不存在，写文件前先 `os.makedirs`。为 `None` 时（如测试中）不生成文件 |
+| `ctx.output_prefix` | 本次运行的日志 / 热力图的路径前缀，在本次运行的输出目录中（如 `logs/map_check_20261021_141000/map_check_20261021_141000`）。扩展生成的其他文件（如图）命名为 `f"{ctx.output_prefix}_{out.category}.png"`，目录可能还不存在，写文件前先 `os.makedirs`。为 `None` 时（如测试中）不生成文件 |
 
 地图文件中的所有内容都能从 `ctx` 拿到（每个元素的全部标签、XML 属性、成员都原样保留），新扩展不需要修改地图读取的代码：
 
