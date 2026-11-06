@@ -43,6 +43,12 @@ masque:
   height: 0.2                   # height tag of the areas
   margin: 3.0                   # distance (m) added around the issues of a hotspot on each side
 
+# Issues as GeoJSON, for programs (comparing map versions, CI, statistics) and GIS tools (JOSM / QGIS open it as a layer)
+json:
+  enabled: true      # true: also write map_check_YYYYmmdd_HHMMSS.geojson next to the log: one point (lon/lat) per
+                     #   issue with its code, severity, message, related ids, local x/y, p, and a key (code + ids)
+                     #   identifying the issue across map versions
+
 # Check thresholds
 turn_angle: 30.0         # minimum heading change to count as a curve (degrees)
 turn_window: 30.0        # maximum arc length window for computing the heading change (m)

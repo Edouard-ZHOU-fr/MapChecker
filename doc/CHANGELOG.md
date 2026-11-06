@@ -8,6 +8,7 @@
 
 ### 新增
 
+- **GeoJSON 输出**（`json.enabled`，默认 false，仓库配置中开启；命令行 `--[no-]json`）：问题同时写入日志旁的 `map_check_YYYYmmdd_HHMMSS.geojson`，供程序处理（比较地图版本、CI 中只拦新问题、统计、与 autoware_lanelet2_map_validator 等工具的结果合并），也可以在 JOSM / QGIS 中作为点图层打开。每个输出的问题一个点（位置与热力图相同，lon/lat 用与 masque 相同的局部拟合），属性有 code、级别、提示文字、按元素类型分的相关 id、局部坐标、p，以及在不同地图版本之间标识同一问题的 `key`（code + 排序后的 id）；FeatureCollection 的 `mapchecker` 成员记录本次运行（地图、`map_version`、检查项、参数、按 code 的统计）。见 [README](README.zh.md#geojson-输出-json)。
 - **issue code**：每一类问题都有一个固定的 code `<检查项>.<问题>`，输出为 `[WARNING stopline.polyline] ...`，登记时带有级别、标题和说明。检查 1~3 的登记在新文件 [config/issue_codes.yaml](../config/issue_codes.yaml) 中（配置项 `issue_codes_file`），每个扩展的登记在它自己的 `ext/<名称>/config/issue_codes.yaml` 中（键只写问题名）：
   - `severity` 决定级别：改成 `error` / `warning` 即改变级别，改成 `off` 则不再报告这类问题（Summary 中给出未报告的条数）。
   - Summary 新增 `issues by code`：按 code 统计问题数。

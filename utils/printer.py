@@ -12,6 +12,10 @@ RESET = "\033[0m"
 
 # WARNING with features: ids are the related lanelets, p is the model's probability of a true issue (None without a model)
 Issue = namedtuple("Issue", "category code ids features p")
+# Every printed WARNING / ERROR, in the order it was reported (for the heatmap and the GeoJSON output): severity is
+# "error" or "warning", text the message without the [WARNING code] prefix, ids the related ids (lanelets, and for
+# some extension checks ways or regulatory elements), pos the coordinates given by the check or None, line the printed line
+Reported = namedtuple("Reported", "category code severity text ids pos p line")
 
 
 class Printer:
@@ -29,8 +33,7 @@ class Printer:
         self.codes = codes or IssueCodes.load()  # utils.issue_codes.IssueCodes, default config/issue_codes.yaml;
                                                  #   utils.ext.run_extensions() adds the codes of the extensions
         self.issues = []                    # printed WARNINGs with features (Issue)
-        self.located = []                   # (check, lanelet ids, coordinates or None, p or None, printed line) of printed
-                                            #   WARNINGs / ERRORs, for the heatmap
+        self.located = []                   # printed WARNINGs / ERRORs (Reported), for the heatmap and the GeoJSON output
         self.count = defaultdict(int)       # number of WARNINGs
         self.errors = defaultdict(int)      # number of ERRORs
         self.suppressed = defaultdict(int)  # (check or issue code, lanelet id) -> number of entries not printed because
@@ -80,7 +83,7 @@ class Printer:
         if severity == "error":
             self.errors[category] += 1
             line = f"[ERROR {code}] {text}"
-            self.located.append((category, tuple(ids), pos, None, line))
+            self.located.append(Reported(category, code, severity, text, tuple(ids), pos, None, line))
             self._print(line, RED)
             return line
 
@@ -90,7 +93,7 @@ class Printer:
             p = self.model.score(category, features) if self.model else None
             self.issues.append(Issue(category, code, tuple(ids), features, p))
         line = f"[WARNING {code}] {text}" if p is None else f"[WARNING {code} p={p:.2f}] {text}"
-        self.located.append((category, tuple(ids), pos, p, line))
+        self.located.append(Reported(category, code, severity, text, tuple(ids), pos, p, line))
         if p is not None and self._held is not None:
             self._held.append((p, line))
         else:

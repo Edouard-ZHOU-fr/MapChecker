@@ -60,6 +60,7 @@ Les options de ligne de commande sont prioritaires sur le fichier de configurati
 | `--[no-]heatmap` | `heatmap.enabled` |
 | `--[no-]show-heatmap` | `isShow` |
 | `--[no-]masque` | `masque.enabled` |
+| `--[no-]json` | `json.enabled` |
 | `--no-color` | Sortie sans couleurs |
 | `--ext NAME[,NAME...]` | Exécute ces extensions, à la place de celles qui ont `enable: true` dans leur configuration |
 | `--only-ext NAME[,NAME...]` | N'exécute que ces extensions, sans les vérifications 1 à 3 |
@@ -86,6 +87,7 @@ Les chemins relatifs sont relatifs à `MapChecker/`.
 | `masque.slow_down_speed` | `15` | Tag `slow_down_speed` des zones du masque (km/h) |
 | `masque.height` | `0.2` | Tag `height` des zones du masque |
 | `masque.margin` | `3.0` | Distance (m) ajoutée de chaque côté autour des problèmes d'une zone |
+| `json.enabled` | `false` | `true` : écrit aussi les problèmes à côté du log en GeoJSON `map_check_YYYYmmdd_HHMMSS.geojson`, pour les programmes (comparaison de versions, CI) et les outils SIG, voir [Sortie GeoJSON](#sortie-geojson-json) |
 | `turn_angle` | `30.0` | Variation de cap minimale pour qu'il y ait virage (degrés) |
 | `turn_window` | `30.0` | Fenêtre maximale de longueur d'arc pour calculer la variation de cap (m) ; une courbe douce sur une longue lanelet ne compte pas comme virage |
 | `min_overlap_area` | `1.0` | Surface minimale pour que deux lanelets se chevauchent (m²) |
@@ -99,7 +101,7 @@ Les chemins relatifs sont relatifs à `MapChecker/`.
 | `Using_LR` | `false` | `true` : note les alertes avec `model_file` ; chaque vérification les affiche par score décroissant. Erreur si le fichier de modèle n'existe pas |
 | `map_min_p` | `0.0` | Avec `Using_LR` : les alertes notées dont le p est inférieur ne sont pas affichées sur la carte de chaleur (points, coloration, zones, fenêtre) ; le rapport et le log les listent toujours. `0` affiche tout |
 
-La valeur par défaut est celle utilisée lorsque le paramètre est absent du fichier de configuration ; le `config/config.yaml` du dépôt active `log`, `heatmap`, `ignore_isolated_turns`, `Using_LR` et `isShow`, et fixe `map_min_p: 0.5`, `parallel_min_length: 30.0`, `parallel_min_gap: 1.8`.
+La valeur par défaut est celle utilisée lorsque le paramètre est absent du fichier de configuration ; le `config/config.yaml` du dépôt active `log`, `heatmap`, `json`, `ignore_isolated_turns`, `Using_LR` et `isShow`, et fixe `map_min_p: 0.5`, `parallel_min_length: 30.0`, `parallel_min_gap: 1.8`.
 
 ## Liste d'ignorés `config/ignore.yaml`
 
@@ -122,6 +124,7 @@ Chaque entrée peut être un simple id de lanelet (éventuellement négatif) ou 
 - La vérification 1 affiche les alertes dans l'ordre des id de lanelet. La vérification 2 affiche d'abord les problèmes des éléments de régulation `right_of_way` existants, puis les alertes de `right_of_way` manquant, groupées par zone (en général une intersection), avec pour chaque groupe le centre et les lanelets concernées.
 - Avec `Using_LR: true`, l'ordre est différent, voir [Ordre de sortie](#ordre-de-sortie).
 - En fin de rapport, le Summary donne le nombre d'alertes de chaque vérification et le nombre de problèmes de chaque code (`issues by code`), les Hotspots listent les zones à forte concentration de problèmes (avec `heatmap.enabled: true`, voir [Carte de chaleur des problèmes](#carte-de-chaleur-des-problèmes-heatmap)), et Ignored lanelets indique l'usage de la liste d'ignorés (absente de la carte, hors AOI, nombre de problèmes masqués).
+- Avec `json.enabled: true`, les problèmes sont aussi écrits en GeoJSON pour les programmes, voir [Sortie GeoJSON](#sortie-geojson-json).
 - Code de sortie : `0` aucun problème, `1` au moins un WARNING / ERROR non ignoré, `2` erreur d'option ou d'environnement. Utilisable en CI.
 
 ### Codes de problème `issue_codes.yaml`
@@ -193,6 +196,33 @@ Masque: .../logs/map_check_20261027_115711/map_check_20261027_115711_masque.osm 
 - **Format** : 4 nœuds + un way `type=detection_area`, `subtype=<masque.subtype>`, `area=yes`, `height`, `slow_down_speed` ; la zone k utilise les nœuds 5k+1 à 5k+4 et le way 5k+5, comme les fichiers masque.
 - **Coordonnées** : `local_x` / `local_y` du rectangle ; `lat` / `lon` par un ajustement affine local sur les 16 nœuds de la carte les plus proches (écart < 1 mm avec la projection MGRS, sans bibliothèque de projection) ; `ele` celle du nœud de bordure de lanelet véhicule le plus proche.
 - Le fichier est à relire avant usage (par exemple dans VMB / JOSM) : ajuster les zones, le `subtype` et la vitesse au cas par cas, puis le copier dans le dépôt de la carte.
+
+## Sortie GeoJSON (`json`)
+
+Avec `json.enabled: true` (ou `--json`), les problèmes sont aussi écrits à côté du log dans `map_check_YYYYmmdd_HHMMSS.geojson`, un fichier lisible par des programmes : le log est fait pour être lu, celui-ci pour être traité.
+
+- **À quoi il sert** : comparer deux versions d'une carte (problèmes nouveaux / corrigés / toujours présents), ne faire échouer la CI que sur les problèmes nouveaux, faire des statistiques sur plusieurs cartes, fusionner avec les résultats d'autres outils (par exemple autoware_lanelet2_map_validator). C'est aussi du GeoJSON standard : JOSM ou QGIS l'ouvrent comme une couche de points par-dessus la carte.
+- **Un point par problème** affiché (les problèmes ignorés et les codes `off` n'y sont pas, mais sont comptés dans `summary`), dans l'ordre où ils ont été signalés, à la même position que sur la carte de chaleur ; `lon` / `lat` par le même ajustement affine local que le masque. Un problème sans position (nœud sans altitude, erreur de chargement de la carte) a `"geometry": null`.
+- **Propriétés** :
+
+  | Champ | Contenu |
+  |---|---|
+  | `key` | Identité du problème d'une version de la carte à l'autre : le code et les id concernés triés, par exemple `right_of_way.missing:12494/19041` (le message s'il n'y a pas d'id). Les positions, surfaces et p n'y sont pas, car ils changent à la moindre modification de la carte |
+  | `code` / `severity` / `check` / `title` | Code du problème, `warning` ou `error`, vérification, titre du code dans `issue_codes.yaml` |
+  | `message` | Le message du log, sans le préfixe `[WARNING code]` |
+  | `ids` | Les id concernés par type d'élément : `lanelet`, `regulatory_element`, `way`, `node` (`unknown` s'il n'est pas dans la carte) |
+  | `x` / `y` | Coordonnées locales (m), comme dans le log |
+  | `p` | Score de `Using_LR`, `null` sinon |
+
+- **Description de l'exécution** dans le membre `mapchecker` de la FeatureCollection (ignoré par les outils SIG) : `format` (version du contenu du fichier), date, chemin de la carte, `map_meta` (`<MetaInfo>`, par exemple `map_version`), vérifications exécutées, paramètres, et `summary` (nombre de WARNING / ERROR, par code, ignorés, codes `off`).
+
+```json
+{"type": "Feature", "geometry": {"type": "Point", "coordinates": [2.12783633, 48.77290807]},
+ "properties": {"key": "stopline.marking_line_type:21187/35563/35567", "code": "stopline.marking_line_type",
+  "severity": "warning", "check": "stopline", "title": "refers way of a road_marking is not a stop_line",
+  "message": "road_marking 35567: refers way 35563 has type=line_thin, not stop_line: ...",
+  "ids": {"regulatory_element": ["35567"], "way": ["35563"], "lanelet": ["21187"]}, "x": 35918.56, "y": 2578.38, "p": null}}
+```
 
 ## Notation des alertes (`Using_LR`)
 
@@ -379,9 +409,10 @@ MapChecker/
     heatmap.py                carte de chaleur et zones à forte concentration de problèmes
     heatmap_window.py         fenêtre de la carte de chaleur (interface graphique Tk)
     masque.py                 masque de ralentissement des zones à forte concentration de problèmes
+    geojson.py                sortie GeoJSON des problèmes
     build_dataset.py          génération des données d'entraînement à partir de l'historique git des dépôts de cartes
     tranning.py               entraînement de la régression logistique
   libs/                       bibliothèques tierces installées par install.sh (non versionnées)
   data/                       données d'entraînement (non versionnées)
-  logs/                       un répertoire par exécution : log, carte de chaleur, masque… (non versionnés)
+  logs/                       un répertoire par exécution : log, carte de chaleur, masque, GeoJSON… (non versionnés)
 ```

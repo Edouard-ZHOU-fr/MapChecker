@@ -52,36 +52,43 @@ Layer = namedtuple("Layer", "kind label artists targets symbol")
 _pending = []  # Heatmaps of report_hotspots(show=True), shown by show_windows()
 
 
-def issue_points(out, lanelets, radius):
+def issue_position(reported, lanelets, radius, middles):
     """
-    Positions of the WARNINGs / ERRORs recorded by Printer; returns
-    (coordinates [N, 2], [(check, lanelet ids, p or None, the output line)], weights [N]),
-    weights: p for a scored WARNING, 1 otherwise.
-    Without given coordinates, the mean of the centerline midpoints of the related lanelets is used; if they are more
-    than radius apart (e.g. a right_of_way referencing a lanelet of another intersection), the mean would fall in an
-    unrelated place, the midpoint of the first lanelet is used instead. Issues not related to a lanelet (e.g. node
-    missing height, map loading error) are not included
+    Position of a WARNING / ERROR recorded by Printer (utils.printer.Reported): the coordinates given by the check, else
+    the mean of the centerline midpoints of the related lanelets; if they are more than radius apart (e.g. a
+    right_of_way referencing a lanelet of another intersection), the mean would fall in an unrelated place, the
+    midpoint of the first lanelet is used instead. None for an issue not related to a lanelet (e.g. node missing
+    height, map loading error). middles: cache {lanelet id: centerline midpoint}, shared between calls
     """
-    middles = {}
-
-    def middle(lid):
+    if reported.pos is not None:
+        return np.asarray(reported.pos, dtype=float)
+    known = [i for i in reported.ids if i in lanelets]
+    if not known:
+        return None
+    for lid in known:
         if lid not in middles:
             c = centerline(lanelets[lid])
             middles[lid] = c[len(c) // 2]
-        return middles[lid]
+    mids = np.array([middles[i] for i in known])
+    far = np.linalg.norm(mids[:, None] - mids[None], axis=-1).max() > radius
+    return mids[0] if far else mids.mean(axis=0)
 
+
+def issue_points(out, lanelets, radius):
+    """
+    Positions of the WARNINGs / ERRORs recorded by Printer (see issue_position); returns
+    (coordinates [N, 2], [(check, lanelet ids, p or None, the output line)], weights [N]),
+    weights: p for a scored WARNING, 1 otherwise. Issues without a position are not included
+    """
+    middles = {}
     pts, items, weights = [], [], []
-    for category, ids, pos, p, line in out.located:
+    for r in out.located:
+        pos = issue_position(r, lanelets, radius, middles)
         if pos is None:
-            known = [i for i in ids if i in lanelets]
-            if not known:
-                continue
-            mids = np.array([middle(i) for i in known])
-            far = np.linalg.norm(mids[:, None] - mids[None], axis=-1).max() > radius
-            pos = mids[0] if far else mids.mean(axis=0)
+            continue
         pts.append(pos)
-        items.append((category, ids, p, line))
-        weights.append(1.0 if p is None else p)
+        items.append((r.category, r.ids, r.p, r.line))
+        weights.append(1.0 if r.p is None else r.p)
     return np.array(pts, dtype=float).reshape(-1, 2), items, np.array(weights, dtype=float)
 
 

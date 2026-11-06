@@ -60,6 +60,7 @@ python3 check_lanelet_map.py --only-ext crosswalk     # 只运行扩展检查 cr
 | `--[no-]heatmap` | `heatmap.enabled` |
 | `--[no-]show-heatmap` | `isShow` |
 | `--[no-]masque` | `masque.enabled` |
+| `--[no-]json` | `json.enabled` |
 | `--no-color` | 不输出颜色 |
 | `--ext NAME[,NAME...]` | 运行这些扩展检查，代替配置中 `enable: true` 的 |
 | `--only-ext NAME[,NAME...]` | 只运行这些扩展检查，跳过检查 1~3 |
@@ -86,6 +87,7 @@ python3 check_lanelet_map.py --only-ext crosswalk     # 只运行扩展检查 cr
 | `masque.slow_down_speed` | `15` | masque 区域的 `slow_down_speed` 标签（km/h） |
 | `masque.height` | `0.2` | masque 区域的 `height` 标签 |
 | `masque.margin` | `3.0` | 在区域内问题点的四周各加宽的距离（米） |
+| `json.enabled` | `false` | `true`：同时把问题以 GeoJSON 写入日志旁的 `map_check_YYYYmmdd_HHMMSS.geojson`，供程序（版本比较、CI）和 GIS 工具使用，见 [GeoJSON 输出](#geojson-输出-json) |
 | `turn_angle` | `30.0` | 判定为弯道的最小航向变化（度） |
 | `turn_window` | `30.0` | 计算航向变化的最大弧长窗口（米），长 lanelet 上的缓弯不算弯道 |
 | `min_overlap_area` | `1.0` | 判定两条 lanelet 重叠的最小面积（m²） |
@@ -99,7 +101,7 @@ python3 check_lanelet_map.py --only-ext crosswalk     # 只运行扩展检查 cr
 | `Using_LR` | `false` | `true`：用 `model_file` 给告警打分，各检查中按分数从高到低输出；模型文件不存在时报错 |
 | `map_min_p` | `0.0` | `Using_LR` 时，p 小于它的有分数告警不在热力图上显示（点、着色、区域和弹出窗口）；报告和日志中仍然列出。`0` 为全部显示 |
 
-默认值是配置文件中缺少该项时使用的值；仓库里的 `config/config.yaml` 打开了 `log`、`heatmap`、`ignore_isolated_turns`、`Using_LR` 和 `isShow`，并设置了 `map_min_p: 0.5`、`parallel_min_length: 30.0`、`parallel_min_gap: 1.8`。
+默认值是配置文件中缺少该项时使用的值；仓库里的 `config/config.yaml` 打开了 `log`、`heatmap`、`json`、`ignore_isolated_turns`、`Using_LR` 和 `isShow`，并设置了 `map_min_p: 0.5`、`parallel_min_length: 30.0`、`parallel_min_gap: 1.8`。
 
 ## 忽略列表 `config/ignore.yaml`
 
@@ -122,6 +124,7 @@ stopline.polyline: [52]                      # 只忽略这一类问题 (键为 
 - 检查 1 按 lanelet id 顺序输出。检查 2 先输出已有 `right_of_way` 规则元素本身的问题，再输出缺少 `right_of_way` 的告警，按区域（通常是一个路口）分组，每组给出中心坐标和涉及的 lanelet。
 - `Using_LR: true` 时顺序不同，见 [输出顺序](#输出顺序)。
 - 末尾的 Summary 列出各检查项的告警数和每个 code 的问题数（`issues by code`），Hotspots 列出问题频发的区域（`heatmap.enabled: true` 时，见 [问题热力图](#问题热力图-heatmap)），Ignored lanelets 列出忽略列表的使用情况（不在地图中、在 AOI 外、屏蔽了几条）。
+- `json.enabled: true` 时，问题同时以 GeoJSON 写出供程序使用，见 [GeoJSON 输出](#geojson-输出-json)。
 - 退出码：`0` 没有问题，`1` 有未忽略的 WARNING / ERROR，`2` 参数或环境错误。可以用于 CI。
 
 ### issue code `issue_codes.yaml`
@@ -193,6 +196,33 @@ Masque: .../logs/map_check_20261027_115711/map_check_20261027_115711_masque.osm 
 - **格式**：4 个节点 + 一个 way，`type=detection_area`、`subtype=<masque.subtype>`、`area=yes`、`height`、`slow_down_speed`；第 k 块用节点 5k+1 ~ 5k+4 和 way 5k+5，与 masque 文件相同。
 - **坐标**：`local_x` / `local_y` 为矩形的角点；`lat` / `lon` 用最近的 16 个地图节点做局部仿射拟合（与 MGRS 投影相差 < 1 mm，不需要投影库）；`ele` 取最近的车辆 lanelet 边界节点的高程。
 - 使用前请检查（如在 VMB / JOSM 中打开）：按实际情况调整区域、`subtype` 和速度，再复制到地图仓库。
+
+## GeoJSON 输出 (`json`)
+
+`json.enabled: true`（或 `--json`）时，问题同时写入日志旁的 `map_check_YYYYmmdd_HHMMSS.geojson`。日志给人读，这个文件给程序处理。
+
+- **用途**：比较两个版本的地图（新增 / 已修复 / 仍存在的问题）、CI 中只在出现新问题时失败、多张地图的统计、与其他工具（如 autoware_lanelet2_map_validator）的结果合并。它也是标准的 GeoJSON：JOSM、QGIS 可以把它作为点图层叠加在地图上打开。
+- **每个输出的问题一个点**（被忽略的问题和 `off` 的 code 不写入，但计入 `summary`），顺序与报告时相同，位置与热力图相同；`lon` / `lat` 用与 masque 相同的局部仿射拟合计算。没有位置的问题（节点没有高程、地图加载错误）为 `"geometry": null`。
+- **属性**：
+
+  | 字段 | 内容 |
+  |---|---|
+  | `key` | 问题在不同地图版本之间的标识：code 加上排序后的相关 id，如 `right_of_way.missing:12494/19041`（没有 id 时为提示文字）。不含位置、面积、p，因为地图稍有改动它们就会变 |
+  | `code` / `severity` / `check` / `title` | 问题的 code、`warning` 或 `error`、检查项、`issue_codes.yaml` 中该 code 的标题 |
+  | `message` | 日志中的提示文字，不含 `[WARNING code]` 前缀 |
+  | `ids` | 按元素类型分的相关 id：`lanelet`、`regulatory_element`、`way`、`node`（地图中没有时为 `unknown`） |
+  | `x` / `y` | 局部坐标（米），与日志相同 |
+  | `p` | `Using_LR` 的打分，没有时为 `null` |
+
+- **本次运行的信息**在 FeatureCollection 的 `mapchecker` 成员中（GIS 工具会忽略它）：`format`（文件内容的版本）、日期、地图路径、`map_meta`（`<MetaInfo>`，如 `map_version`）、运行的检查项、参数，以及 `summary`（WARNING / ERROR 数、每个 code 的数量、被忽略的数量、`off` 的 code）。
+
+```json
+{"type": "Feature", "geometry": {"type": "Point", "coordinates": [2.12783633, 48.77290807]},
+ "properties": {"key": "stopline.marking_line_type:21187/35563/35567", "code": "stopline.marking_line_type",
+  "severity": "warning", "check": "stopline", "title": "refers way of a road_marking is not a stop_line",
+  "message": "road_marking 35567: refers way 35563 has type=line_thin, not stop_line: ...",
+  "ids": {"regulatory_element": ["35567"], "way": ["35563"], "lanelet": ["21187"]}, "x": 35918.56, "y": 2578.38, "p": null}}
+```
 
 ## 告警打分 (`Using_LR`)
 
@@ -379,9 +409,10 @@ MapChecker/
     heatmap.py                问题热力图和问题频发的区域
     heatmap_window.py         热力图窗口 (Tk 图形界面)
     masque.py                 由问题频发区域生成减速 masque
+    geojson.py                问题的 GeoJSON 输出
     build_dataset.py          从地图仓库的 git 历史生成训练数据
     tranning.py               训练 logistic regression
   libs/                       install.sh 安装的第三方库 (不提交)
   data/                       训练数据 (不提交)
-  logs/                       每次运行一个目录：日志、热力图、masque 等 (不提交)
+  logs/                       每次运行一个目录：日志、热力图、masque、GeoJSON 等 (不提交)
 ```
