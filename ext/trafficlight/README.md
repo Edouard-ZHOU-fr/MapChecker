@@ -89,14 +89,14 @@ velizy 地图修改前（`velizy_base_aero_map_planning` commit `9012674`）：
 ```
 === Ext trafficlight: traffic lights as used by the Autoware traffic_light module and the camera matching (facing <= 40°, stop line extended by 5 m) ===
 ...
-[WARNING] traffic_light 36310: light_bulbs way 36309 is up to 2.81 m from traffic light way 36308 (max 1 m): bulbs z 209.57 ~ 209.59, light z 212.16 ~ 212.66
-[ERROR] traffic_light 36310 | lanelet 33871: no light can be recognized from the lanelet (light 36308: faces away, facing error +175° (max 40°); drawn right -> left, reverse its node order): the traffic_light module gets no signal, treats it as red and vehicles on lanelet 33871 never pass the stop line at (42624.4, 3500.6)
-[WARNING] traffic_light 36310 (lanelet 33871): stop line 36307 crosses lanelet 33868 (same direction, once extended by 5 m) at (42621.6, 3502.0), which uses traffic_light 39264: a module of 36310 active on lanelet 33868 stops the vehicle there by the lights of 36310; merge them into one regulatory element if they show the same phase
+[WARNING trafficlight.bulbs_offset] traffic_light 36310: light_bulbs way 36309 is up to 2.81 m from traffic light way 36308 (max 1 m): bulbs z 209.57 ~ 209.59, light z 212.16 ~ 212.66
+[ERROR trafficlight.not_recognized] traffic_light 36310 | lanelet 33871: no light can be recognized from the lanelet (light 36308: faces away, facing error +175° (max 40°); drawn right -> left, reverse its node order): the traffic_light module gets no signal, treats it as red and vehicles on lanelet 33871 never pass the stop line at (42624.4, 3500.6)
+[WARNING trafficlight.crosses_other_lane] traffic_light 36310 (lanelet 33871): stop line 36307 crosses lanelet 33868 (same direction, once extended by 5 m) at (42621.6, 3502.0), which uses traffic_light 39264: a module of 36310 active on lanelet 33868 stops the vehicle there by the lights of 36310; merge them into one regulatory element if they show the same phase
 ...
-[WARNING] traffic_light 36321 (lanelet 33944): stop line 36318 crosses lanelet 34281 (same direction, once extended by 5 m) at (42641.6, 3535.4), which uses no traffic light: if it faces the same signal, add traffic_light 36321 to it (vehicles on it do not stop at red); otherwise a module of 36321 active on lanelet 34281 stops the vehicle there
-[WARNING] traffic_light 36373: traffic light way 36330 is 0.72 m above the stop line (expected 1.5 ~ 8 m), the camera matching looks for it at this height
+[WARNING trafficlight.crosses_other_lane] traffic_light 36321 (lanelet 33944): stop line 36318 crosses lanelet 34281 (same direction, once extended by 5 m) at (42641.6, 3535.4), which uses no traffic light: if it faces the same signal, add traffic_light 36321 to it (vehicles on it do not stop at red); otherwise a module of 36321 active on lanelet 34281 stops the vehicle there
+[WARNING trafficlight.height_range] traffic_light 36373: traffic light way 36330 is 0.72 m above the stop line (expected 1.5 ~ 8 m), the camera matching looks for it at this height
 ...
-[WARNING] traffic_light 39264 (lanelet 33868): stop line 39263 crosses lanelet 33871 (same direction, once extended by 5 m) at (42624.4, 3500.6), which uses traffic_light 36310: a module of 39264 active on lanelet 33871 stops the vehicle there by the lights of 39264; merge them into one regulatory element if they show the same phase
+[WARNING trafficlight.crosses_other_lane] traffic_light 39264 (lanelet 33868): stop line 39263 crosses lanelet 33871 (same direction, once extended by 5 m) at (42624.4, 3500.6), which uses traffic_light 36310: a module of 39264 active on lanelet 33871 stops the vehicle there by the lights of 39264; merge them into one regulatory element if they show the same phase
 ...
 13 traffic lights used by 13 vehicle lanelets checked: 1 error(s), 29 warning(s)
 traffic_light ways not referenced by any regulatory element: 36220 36231 36244 36340 36350 36360 36370
@@ -105,7 +105,7 @@ traffic_light ways not referenced by any regulatory element: 36220 36231 36244 3
 把 39264 和 36310 合并成一个规则元素（两个灯、一条横跨两条车道的停止线，33868 和 33871 都引用它）后，ERROR 和两条车道互相穿过的 WARNING 消失，只剩下灯 36308 方向画反的提示：
 
 ```
-[WARNING] traffic_light 39264: traffic light way 36308 cannot be recognized from lanelet 33868, 33871 (faces away, facing error +175° (max 40°); drawn right -> left, reverse its node order); only the other light(s) of the regulatory element are used there
+[WARNING trafficlight.partly_recognized] traffic_light 39264: traffic light way 36308 cannot be recognized from lanelet 33868, 33871 (faces away, facing error +175° (max 40°); drawn right -> left, reverse its node order); only the other light(s) of the regulatory element are used there
 ```
 
 ## 参考：现有地图的结果（2026-10-30）

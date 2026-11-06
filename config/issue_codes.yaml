@@ -1,0 +1,126 @@
+# Issue codes of Checks 1~3 and of the extension framework
+# Every WARNING / ERROR of MapChecker has a stable code <check>.<issue>, printed with it in the report
+# ([WARNING right_of_way.missing] ...) and counted per code in the Summary. Programs, tests and ignore lists refer to
+# the code, not to the wording of the message, which can change.
+# Each extension check registers its own codes in ext/<name>/config/issue_codes.yaml (same fields, keys without the
+# extension name: polyline in ext/stopline/ is the code stopline.polyline); codes of an extension are not accepted here.
+#
+#   severity:     error | warning | off; set by this file, not by the check: change it to report an issue type as an
+#                 ERROR or a WARNING, off to no longer report it at all (the Summary gives how many were not reported)
+#   title:        short description of the issue type
+#   description:  (optional) what it means for Autoware and how to fix it
+#
+# A code used by a check must be registered (an unknown code is reported as a crash of the check). To ignore an issue
+# type only on some lanelets, use the code as key in config/ignore.yaml (e.g. right_of_way.missing: [614]).
+
+# ---- Check 1: turn_direction (utils/check_turn_direction.py)
+
+turn_direction.invalid_value:
+  severity: warning
+  title: turn_direction is not left / right / straight
+  description: Autoware only knows left, right and straight; any other value counts as no turn signal.
+
+turn_direction.missing:
+  severity: warning
+  title: curve without turn_direction
+  description: The lanelet turns (heading change >= turn_angle) but has no turn_direction, no turn signal is shown.
+
+turn_direction.missing_straight:
+  severity: warning
+  title: straight lanelet intersecting other lanes without turn_direction
+  description: With straight_as_turn_light, a straight lanelet crossing or merging with other lanes needs
+    turn_direction=straight.
+
+turn_direction.not_straight:
+  severity: warning
+  title: straight lanelet tagged left / right
+  description: Without straight_as_turn_light, a straight lanelet intersecting other lanes is tagged left or right.
+
+turn_direction.straight_on_curve:
+  severity: warning
+  title: curve tagged turn_direction=straight
+  description: Without straight_as_turn_light, a curve tagged straight shows no turn signal.
+
+turn_direction.opposite:
+  severity: warning
+  title: turn_direction opposite to the geometry
+  description: Without straight_as_turn_light, the tagged direction is the opposite of the way the lanelet turns.
+
+turn_direction.autoware_conflict:
+  severity: warning
+  title: conflicting lanelets in the Autoware routing graph without turn_direction
+  description: Found only by the Autoware check (autoware_checking), missed by the geometric check (e.g. diverge,
+    very small overlap).
+
+# ---- Check 2: right_of_way (utils/check_right_of_way.py)
+
+right_of_way.missing:
+  severity: warning
+  title: crossing / merging lanelets without right_of_way
+  description: Two lanelets overlap (crossing or merge) and no right_of_way regulatory element gives one priority.
+
+right_of_way.unknown_lanelet:
+  severity: warning
+  title: right_of_way references a lanelet missing from the map
+
+right_of_way.missing_member:
+  severity: warning
+  title: right_of_way without right_of_way or yield member
+
+right_of_way.not_referenced:
+  severity: warning
+  title: priority lanelet does not reference its right_of_way
+  description: Autoware only reads a regulatory element from the lanelets referencing it, this right_of_way is ignored.
+
+right_of_way.no_overlap:
+  severity: error
+  title: right_of_way between lanelets that do not overlap at all
+  description: The right_of_way and yield lanelets never meet, the regulatory element is drawn on the wrong lanelets.
+
+# ---- Check 3: autoware (utils/check_autoware.py, utils/validate_autoware_map.py)
+
+autoware.format_version:
+  severity: error
+  title: missing or non semver-style format_version
+  description: The Autoware map loader rejects the map.
+
+autoware.format_version_unsupported:
+  severity: error
+  title: format_version newer than the version supported by Autoware
+
+autoware.load_failed:
+  severity: error
+  title: lanelet2 cannot load the map
+
+autoware.parse_error:
+  severity: error
+  title: lanelet2 parse error
+
+autoware.missing_elevation:
+  severity: warning
+  title: nodes without elevation (ele) tag
+
+autoware.missing_light_bulbs:
+  severity: warning
+  title: traffic light without light_bulbs member
+  description: The region_tlr node cannot be used with this traffic light.
+
+autoware.light_bulb_missing_id:
+  severity: warning
+  title: light_bulbs way without traffic_light_id tag
+
+autoware.traffic_light_polygon:
+  severity: warning
+  title: traffic light drawn as a polygon
+  description: Only linestrings are supported for traffic lights.
+
+autoware.traffic_light_missing_height:
+  severity: warning
+  title: traffic light without height tag
+
+# ---- Extension framework (utils/ext.py)
+
+ext.crashed:
+  severity: error
+  title: extension check crashed
+  description: The check raised an exception (traceback in the report), its results are incomplete.

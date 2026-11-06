@@ -1,0 +1,102 @@
+# Issue codes of this extension check (ext/<name>/)
+# Each key is an issue name; the code is <name>.<issue>, <name> being the directory name of the extension (e.g.
+# polyline in ext/stopline/ is stopline.polyline). The check reports it with out.issue("<issue>", ...), the report
+# prints [WARNING <name>.<issue>] ..., and config/ignore.yaml can ignore only this issue type with the code as key.
+# Every issue reported by the extension must be listed here (an unknown one is reported as a crash of the extension).
+#
+#   severity:     error | warning | off; change it to report the issue type as an ERROR or a WARNING, off to no longer
+#                 report it (the Summary gives how many were not reported)
+#   title:        short description of the issue type
+#   description:  (optional) what it means for Autoware and how to fix it
+
+shared_light:
+  severity: error
+  title: traffic light way referenced by several traffic_light regulatory elements
+  description: The camera matching keeps a single regulatory element per light, the others never get its state and
+    are treated as red; merge them into one regulatory element.
+
+light_invalid:
+  severity: error
+  title: refers way missing from the map, with missing nodes or fewer than 2 points
+
+light_type:
+  severity: warning
+  title: refers way is not a traffic_light
+
+no_light:
+  severity: error
+  title: traffic_light without traffic light (refers)
+
+no_stop_line:
+  severity: error
+  title: traffic_light without stop line (ref_line)
+  description: The traffic_light module is not created, vehicles do not stop at red.
+
+stop_line_invalid:
+  severity: error
+  title: ref_line way missing from the map or invalid
+
+several_stop_lines:
+  severity: warning
+  title: several ref_line, only the first one is used
+
+stop_line_type:
+  severity: warning
+  title: ref_line way is not a stop_line
+
+unused:
+  severity: warning
+  title: traffic_light not referenced by any lanelet
+  description: No traffic_light module is ever created for it.
+
+missing_light_type:
+  severity: warning
+  title: traffic light without traffic_light_type
+  description: Used neither by the camera matching nor by the V2X handler; reading it, the camera matching skips the
+    following lights of the regulatory element and the V2X handler all the following traffic lights of the map.
+
+invalid_light_type:
+  severity: warning
+  title: traffic_light_type is neither camera nor v2x
+
+missing_height:
+  severity: warning
+  title: camera traffic light without valid height tag
+  description: The camera matching projects a box of height 0.
+
+height_range:
+  severity: warning
+  title: traffic light height above the stop line out of min_height ~ max_height
+
+bulbs_invalid:
+  severity: error
+  title: light_bulbs way missing from the map or with missing nodes
+
+bulbs_offset:
+  severity: warning
+  title: light_bulbs far from their traffic light (over bulb_max_offset)
+
+stop_line_not_crossing:
+  severity: error
+  title: stop line does not cross the lanelet, even extended
+  description: The traffic_light module cannot place a stop point, vehicles on the lanelet do not stop at red.
+
+stop_line_extended:
+  severity: warning
+  title: stop line only crosses the lanelet once extended by stop_line_extend_length
+
+not_recognized:
+  severity: error
+  title: no light can be recognized from the lanelet
+  description: Lights facing away or behind the stop line; the module gets no signal, treats it as red and vehicles
+    never pass.
+
+partly_recognized:
+  severity: warning
+  title: traffic light cannot be recognized from some of the lanelets
+  description: Only the other lights of the regulatory element are used there.
+
+crosses_other_lane:
+  severity: warning
+  title: extended stop line crosses another lanelet of the same direction
+  description: A module of this regulatory element active on that lanelet stops the vehicle there.

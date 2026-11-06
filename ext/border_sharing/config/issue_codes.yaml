@@ -1,0 +1,16 @@
+# Issue codes of this extension check (ext/<name>/)
+# Each key is an issue name; the code is <name>.<issue>, <name> being the directory name of the extension (e.g.
+# polyline in ext/stopline/ is stopline.polyline). The check reports it with out.issue("<issue>", ...), the report
+# prints [WARNING <name>.<issue>] ..., and config/ignore.yaml can ignore only this issue type with the code as key.
+# Every issue reported by the extension must be listed here (an unknown one is reported as a crash of the extension).
+#
+#   severity:     error | warning | off; change it to report the issue type as an ERROR or a WARNING, off to no longer
+#                 report it (the Summary gives how many were not reported)
+#   title:        short description of the issue type
+#   description:  (optional) what it means for Autoware and how to fix it
+
+not_shared:
+  severity: warning
+  title: side-by-side lanelets with different coinciding boundary ways
+  description: Same direction, they are not adjacent in the routing graph (no lane change); opposite directions, they
+    should share one center line. The two lines usually leave a gap or an overlap between the lanes.

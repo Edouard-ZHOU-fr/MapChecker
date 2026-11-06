@@ -8,12 +8,27 @@ Ce fichier recense les principales évolutions de chaque version de MapChecker, 
 
 ### Ajouté
 
+- **Codes de problème** : chaque type de problème a un code fixe `<vérification>.<problème>`, affiché sous la forme `[WARNING stopline.polyline] ...` et enregistré avec son niveau, un titre et une description : ceux des vérifications 1 à 3 dans le nouveau fichier [config/issue_codes.yaml](../config/issue_codes.yaml) (paramètre `issue_codes_file`), ceux de chaque extension dans son propre `ext/<nom>/config/issue_codes.yaml` (clés réduites au nom du problème) :
+  - `severity` fixe le niveau : `error` / `warning` le change, `off` ne signale plus ce type de problème (le Summary indique combien n'ont pas été signalés).
+  - Le Summary compte les problèmes par code (`issues by code`).
+  - `config/ignore.yaml` accepte un code comme clé, pour n'ignorer que ce type de problème sur ces lanelets (par exemple `stopline.polyline: [52]`).
+  - Les tests vérifient les codes ; le nouveau `tests/test_issue_codes.py` vérifie, fichier par fichier, que les codes du code source et ceux des fichiers correspondent.
+  - Les données d'entraînement (`train_model.py`) ne dépendent pas des `severity` choisis.
+
+  La liste des codes et de leurs conditions se trouve dans [checkinglist.fr.md](checkinglist.fr.md), l'utilisation dans le [README](../README.md#codes-de-problème-issue_codesyaml).
 - **Extension `stopline` : références des éléments de régulation traffic_sign / road_marking à leur ligne d'arrêt**, avec les mêmes exigences que `regulatory_element_details_for_traffic_signs` et `road_markings` d'autoware_lanelet2_map_validator :
   - traffic_sign : `refers` est le panneau, `ref_line` la ligne d'arrêt. Un panneau stop sans `ref_line` donne une ERROR (le module stop_line d'Autoware s'arrête devant le `ref_line`, le véhicule ne s'y arrête pas) ; si la ligne d'arrêt a été mise dans `refers`, le message indique de changer son rôle.
   - road_marking : exactement un `refers`, de `type=stop_line` ; sinon Autoware ne l'utilise pas comme ligne d'arrêt (par exemple ligne d'arrêt d'intersection).
   - Trouvé sur les cartes existantes : le traffic_sign 51096 de lanelet2_map a sa ligne d'arrêt dans `refers` et pas de `ref_line` ; 2 road_marking de lanelet2_map et 4 de buc référencent une ligne `type=line_thin`.
 
   Voir [ext/stopline/README.md](../ext/stopline/README.md#引用).
+
+### Modifié
+
+- **Incompatible** : chaque extension doit avoir un `config/issue_codes.yaml`, sans lui elle ne peut pas s'exécuter. `out.warn(text, ...)` / `out.error(text, ...)` des extensions deviennent `out.issue(name, text, ids=(), pos=None)` : `name` est le nom du problème dans le `config/issue_codes.yaml` de l'extension, dont le `severity` donne le niveau ; un nom non enregistré fait signaler `ext.crashed` pour l'extension ; la méthode renvoie la ligne affichée (`None` si rien n'est affiché). Nouveau `out.total` (WARNING + ERROR). `Printer.warn()` / `error()` deviennent `Printer.issue(category, code, ...)`, et `Printer.is_ignored()` prend un paramètre `code`. Voir [ext/README.md](../ext/README.md#oututilsprinterscopedprinter).
+- Le préfixe des lignes passe de `[WARNING]` / `[ERROR]` / `[WARNING p=0.77]` à `[WARNING code]` / `[ERROR code]` / `[WARNING code p=0.77]`.
+- Dans `utils.validate_autoware_map.Result`, chaque problème de `load` et `traffic_light` porte son code : `[(code, message)]` / `[(code, message, ids de lanelet)]`.
+- `out.ignored` des extensions compte désormais les problèmes (auparavant les id ignorés : un problème concernant plusieurs id ignorés était compté plusieurs fois).
 
 ### Corrigé
 

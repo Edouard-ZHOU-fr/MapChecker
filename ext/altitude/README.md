@@ -61,9 +61,9 @@ python3 check_lanelet_map.py --only-ext altitude --set altitude.plot=false      
 
 ```
 === Ext altitude: abrupt elevation changes on lane boundaries (max slope 15%, max cross slope 15%, min step 0.10 m) ===
-[WARNING] #1 step between nodes 681 -> 682: 183.18 -> 174.72 m (-8.46 m over 7.29 m, slope 116%, max 15%) | lanelet 693 right at (31496.8, 9715.5)
-[WARNING] #7 cross slope at node 664: 4.75 m below the right boundary 2.31 m away (cross slope 206%, max 15%) | lanelet 680 left, lanelet 693 left at (31498.9, 9725.1)
-[WARNING] #55 spike at node 1674: 0.28 m above nodes 1673 and 1675 (179.59 m, slope up to 19%, max 15%) | lanelet 1683 right at (30877.3, 10635.5)
+[WARNING altitude.step] #1 step between nodes 681 -> 682: 183.18 -> 174.72 m (-8.46 m over 7.29 m, slope 116%, max 15%) | lanelet 693 right at (31496.8, 9715.5)
+[WARNING altitude.cross_slope] #7 cross slope at node 664: 4.75 m below the right boundary 2.31 m away (cross slope 206%, max 15%) | lanelet 680 left, lanelet 693 left at (31498.9, 9725.1)
+[WARNING altitude.spike] #55 spike at node 1674: 0.28 m above nodes 1673 and 1675 (179.59 m, slope up to 19%, max 15%) | lanelet 1683 right at (30877.3, 10635.5)
 ...
 elevation 169.34 ~ 192.13 m; slope between adjacent nodes: median 0.0%, 99% 15.7%; cross slope: median 0.0%, 99% 10.7% (node pairs >= 1 m apart)
 581 vehicle lanelets (5381 nodes) checked: 54 steps, 4 spikes, 6 cross slopes, 4 ignored

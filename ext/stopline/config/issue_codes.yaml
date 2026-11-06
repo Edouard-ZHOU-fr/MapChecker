@@ -1,0 +1,66 @@
+# Issue codes of this extension check (ext/<name>/)
+# Each key is an issue name; the code is <name>.<issue>, <name> being the directory name of the extension (e.g.
+# polyline in ext/stopline/ is stopline.polyline). The check reports it with out.issue("<issue>", ...), the report
+# prints [WARNING <name>.<issue>] ..., and config/ignore.yaml can ignore only this issue type with the code as key.
+# Every issue reported by the extension must be listed here (an unknown one is reported as a crash of the extension).
+#
+#   severity:     error | warning | off; change it to report the issue type as an ERROR or a WARNING, off to no longer
+#                 report it (the Summary gives how many were not reported)
+#   title:        short description of the issue type
+#   description:  (optional) what it means for Autoware and how to fix it
+
+missing_nodes:
+  severity: error
+  title: stop line references nodes missing from the map
+
+too_few_points:
+  severity: error
+  title: stop line with fewer than 2 points
+
+polyline:
+  severity: warning
+  title: stop line with more than 2 points (polyline)
+  description: A stop line should be a straight line of 2 points; the report gives how far its intermediate points
+    are from the line between its ends (0 m means redundant points on the line).
+
+member_not_way:
+  severity: error
+  title: refers / ref_line member of a traffic_sign / road_marking is not a way of the map
+
+sign_missing:
+  severity: error
+  title: traffic_sign without a sign (refers way with type=traffic_sign)
+  description: Autoware does not recognize it as a stop sign.
+
+sign_no_stop_line:
+  severity: error
+  title: stop sign without stop line (ref_line)
+  description: The stop_line module stops at the ref_line, the vehicle does not stop at this sign.
+
+sign_stop_line_in_refers:
+  severity: warning
+  title: stop line in role refers of a traffic_sign
+  description: A stop line belongs in ref_line.
+
+sign_refers_type:
+  severity: warning
+  title: refers way of a traffic_sign is not a traffic_sign
+
+sign_ref_line_type:
+  severity: warning
+  title: ref_line way of a traffic_sign is not a stop_line
+
+marking_refers_count:
+  severity: error
+  title: road_marking does not reference exactly one line
+  description: A road_marking references its stop line, and only it, as refers.
+
+marking_line_type:
+  severity: warning
+  title: refers way of a road_marking is not a stop_line
+  description: Autoware does not use it as a stop line.
+
+marking_ref_line:
+  severity: warning
+  title: road_marking with a ref_line
+  description: A road_marking references its stop line with refers only, its ref_line is not used.

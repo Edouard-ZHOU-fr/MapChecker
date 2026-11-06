@@ -35,7 +35,7 @@ def check_right_of_way(lanelets, reg_elems, overlaps, aoi_ids, opts, out):
         if frozenset((a_id, b_id)) in covered:
             n_covered += 1
             continue
-        if out.is_ignored("right_of_way", a_id, b_id):
+        if out.is_ignored("right_of_way", "right_of_way.missing", a_id, b_id):
             n_ignored += 1
             continue
         kind = "merge" if rel == "merge" else "crossing"
@@ -50,14 +50,16 @@ def check_right_of_way(lanelets, reg_elems, overlaps, aoi_ids, opts, out):
         out.info(f"-- Area {k}, center {fmt_xy(center)}, lanelets: {' '.join(ids)}")
         if not out.model:
             for a_id, b_id, text, pos, features in items:
-                out.warn("right_of_way", f"lanelet {a_id} / {b_id}: {text}", (a_id, b_id), features, pos)
+                out.issue("right_of_way", "right_of_way.missing", f"lanelet {a_id} / {b_id}: {text}", (a_id, b_id),
+                          features, pos)
     if out.model:
         # with a model, list all areas first, then output the warnings of all areas together by descending p,
         # each one noting its area
         out.hold()
         for k, items in enumerate(groups, 1):
             for a_id, b_id, text, pos, features in items:
-                out.warn("right_of_way", f"lanelet {a_id} / {b_id} (area {k}): {text}", (a_id, b_id), features, pos)
+                out.issue("right_of_way", "right_of_way.missing", f"lanelet {a_id} / {b_id} (area {k}): {text}",
+                          (a_id, b_id), features, pos)
         out.flush()
 
     out.info(f"{n_conflicts} overlapping lanelet pairs detected: {n_covered} with right_of_way, "
@@ -81,13 +83,16 @@ def _check_rules(lanelets, reg_elems, in_aoi, out):
         existing = [x for x in rows + yields if x in lanelets]
         for ref in rows + yields:
             if ref not in lanelets and in_aoi(*existing):
-                out.warn("right_of_way", f"right_of_way {re_.id}: referenced lanelet {ref} does not exist", (ref,))
+                out.issue("right_of_way", "right_of_way.unknown_lanelet",
+                          f"right_of_way {re_.id}: referenced lanelet {ref} does not exist", (ref,))
         if (not rows or not yields) and in_aoi(*existing):
-            out.warn("right_of_way", f"right_of_way {re_.id}: missing right_of_way or yield member", rows + yields)
+            out.issue("right_of_way", "right_of_way.missing_member",
+                      f"right_of_way {re_.id}: missing right_of_way or yield member", rows + yields)
         for r in rows:
             if r in lanelets and re_.id not in lanelets[r].reg_elems and in_aoi(r):
-                out.warn("right_of_way", f"right_of_way {re_.id}: priority lanelet {r} does not reference "
-                                         f"this regulatory element (ignored by Autoware)", (r,))
+                out.issue("right_of_way", "right_of_way.not_referenced",
+                          f"right_of_way {re_.id}: priority lanelet {r} does not reference this regulatory element "
+                          f"(ignored by Autoware)", (r,))
             for y in yields:
                 if r not in lanelets or y not in lanelets or not in_aoi(r, y):
                     continue
@@ -98,9 +103,9 @@ def _check_rules(lanelets, reg_elems, in_aoi, out):
                     # where it was drawn; the midpoint of two lanelets far apart would fall in an unrelated place
                     at = y if re_.id in lanelets[y].reg_elems and re_.id not in lanelets[r].reg_elems else r
                     center = centerline(lanelets[at])
-                    out.error("right_of_way", f"right_of_way {re_.id}: lanelet {r} (right_of_way) and {y} (yield) "
-                                              f"do not overlap at all (min distance {dist:.1f} m)", (r, y),
-                              center[len(center) // 2])
+                    out.issue("right_of_way", "right_of_way.no_overlap",
+                              f"right_of_way {re_.id}: lanelet {r} (right_of_way) and {y} (yield) do not overlap at "
+                              f"all (min distance {dist:.1f} m)", (r, y), pos=center[len(center) // 2])
     return covered_pairs(reg_elems)
 
 

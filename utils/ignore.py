@@ -5,6 +5,8 @@ import re
 
 import yaml
 
+from .issue_codes import check_of
+
 CATEGORIES = ("turn_direction", "right_of_way", "autoware")
 LANELET_ID = re.compile(r"-?\d+")  # elements newly created in editors such as JOSM and not yet uploaded have negative ids
 
@@ -30,10 +32,11 @@ def parse_items(items, where):
     return result
 
 
-def load_ignore(path, extra_scopes=()):
+def load_ignore(path, extra_scopes=(), codes=()):
     """
     Read ignore.yaml, return [(scope, lanelet id, reason)]; return an empty list if the file does not exist.
-    The scope is all, a name of Checks 1~3, or an extension check name in extra_scopes.
+    The scope is all, a name of Checks 1~3, an extension check name in extra_scopes, or an issue code in codes
+    (registered in config/issue_codes.yaml: only that issue type is ignored for the lanelet).
     Each item can be written as `- 614` or `- 614: reason`.
     """
     if not os.path.isfile(path):
@@ -42,31 +45,36 @@ def load_ignore(path, extra_scopes=()):
     with open(path, encoding="utf-8") as f:
         data = yaml.safe_load(f) or {}
     if not isinstance(data, dict):
-        raise ValueError(f"{path}: top level must be a mapping with keys {', '.join(scopes)}")
+        raise ValueError(f"{path}: top level must be a mapping with keys {', '.join(scopes)} or issue codes")
     entries = []
     for scope, items in data.items():
-        if scope not in scopes:
-            raise ValueError(f"{path}: unknown key '{scope}', expected one of {', '.join(scopes)}")
+        if scope not in scopes and scope not in codes:
+            raise ValueError(f"{path}: unknown key '{scope}', expected one of {', '.join(scopes)}, or an issue code "
+                             f"of config/issue_codes.yaml (e.g. stopline.polyline)")
         entries += [(scope, lid, reason) for lid, reason in parse_items(items, f"{path}: '{scope}'").items()]
     return entries
 
 
 def ignore_by_category(entries, categories=CATEGORIES):
     """
-    [(scope, id, reason)] -> {check: {id: reason}}, only for categories (the checks to run); all applies to all of them
+    [(scope, id, reason)] -> {check or issue code: {id: reason}}, only for categories (the checks to run) and the issue
+    codes of these checks; all applies to all the checks
     """
     result = {c: {} for c in categories}
     for scope, lid, reason in entries:
         for category in categories if scope == "all" else (scope,):
             if category in result:
                 result[category][lid] = reason
+            elif check_of(category) in categories and category != check_of(category):  # issue code
+                result.setdefault(category, {})[lid] = reason
     return result
 
 
 def report_ignored(entries, ignore_path, ctx, out):
     """
     List the ignored lanelets and the number of issues they suppress at the end of the report;
-    ignore lists in the extension check configs use the extension check name as scope.
+    ignore lists in the extension check configs use the extension check name as scope, an issue code as scope only
+    ignores that issue type.
     ctx: utils.context.MapContext
     """
     out.header("Ignored lanelets")
@@ -79,7 +87,8 @@ def report_ignored(entries, ignore_path, ctx, out):
         out.info("None")
         return
     for scope, lid, reason in entries:
-        n = sum(out.suppressed[(c, lid)] for c in (out.ignore if scope == "all" else (scope,)))
+        checks = [c for c in out.ignore if c == check_of(c)]  # without the issue codes
+        n = sum(out.suppressed[(c, lid)] for c in (checks if scope == "all" else (scope,)))
         # an extension check may also report issues of other elements by their id (e.g. stopline: the stop line way or
         # the traffic_sign / road_marking regulatory element; trafficlight: the regulatory element)
         other = None

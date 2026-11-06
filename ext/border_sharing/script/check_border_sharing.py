@@ -128,12 +128,13 @@ def check(ctx, cfg, out):
                 pair = f"lanelet {a.id} {side_a} (way {ba.way}) / lanelet {b.id} {side_b} (way {bb.way})"
                 consequence = ("they are not adjacent in the routing graph, no lane change between them" if sign > 0
                                else "opposite lanes should share one center line")
-                out.warn(f"{pair}{', opposite directions' if sign < 0 else ''}: boundaries coincide over "
-                         f"{length:.1f} m ({min(length / shorter, 1.0):.0%} of the shorter) but are different ways, "
-                         f"{relative(signed)}; {consequence} | at {fmt_xy(pos)}",
-                         (a.id, b.id), pos=pos)
+                out.issue("not_shared",
+                          f"{pair}{', opposite directions' if sign < 0 else ''}: boundaries coincide over "
+                          f"{length:.1f} m ({min(length / shorter, 1.0):.0%} of the shorter) but are different ways, "
+                          f"{relative(signed)}; {consequence} | at {fmt_xy(pos)}",
+                          (a.id, b.id), pos=pos)
 
-    out.info(f"{n_shared + out.warnings + out.ignored} pairs of side-by-side lanelets: {n_shared} share their boundary, "
-             f"{out.warnings} do not" + (f", {out.ignored} ignored" if out.ignored else ""))
-    if out.warnings == 0:
+    out.info(f"{n_shared + out.total + out.ignored} pairs of side-by-side lanelets: {n_shared} share their boundary, "
+             f"{out.total} do not" + (f", {out.ignored} ignored" if out.ignored else ""))
+    if out.total == 0:
         out.ok("All side-by-side lanelets share their boundary")

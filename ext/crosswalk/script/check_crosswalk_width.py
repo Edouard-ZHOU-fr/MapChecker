@@ -96,14 +96,14 @@ def check(ctx, cfg, out):
                            for (ext, lane, inside_road), pos in zip(exts, ends))
         worst = max((0, 1), key=lambda side: exts[side][0])
         if exts[worst][0] > max_ext:
-            out.warn(f"crosswalk {cw.id}: extends up to {exts[worst][0]:.2f} m beyond the road "
-                     f"(max {max_ext:.2f} m) | {detail}", (cw.id,), pos=ends[worst])
+            out.issue("beyond_road", f"crosswalk {cw.id}: extends up to {exts[worst][0]:.2f} m beyond the road "
+                                     f"(max {max_ext:.2f} m) | {detail}", (cw.id,), pos=ends[worst])
         else:
             out.info(f"crosswalk {cw.id}: extends up to {exts[worst][0]:.2f} m beyond the road | {detail}")
 
-    out.info(f"{len(crosswalks)} crosswalks: {out.warnings} extend more than {max_ext:.2f} m beyond the road"
+    out.info(f"{len(crosswalks)} crosswalks: {out.total} extend more than {max_ext:.2f} m beyond the road"
              + (f", {out.ignored} ignored" if out.ignored else ""))
     if not_crossing:
         out.info(f"crosswalks overlapping no vehicle lanelet (not checked): {' '.join(not_crossing)}")
-    if out.warnings == 0:
+    if out.total == 0:
         out.ok(f"No crosswalk extends more than {max_ext:.2f} m beyond the road")

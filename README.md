@@ -11,7 +11,7 @@ Outil de vérification des cartes Lanelet2 : il repère les endroits de la carte
 | 1. turn_direction | Les virages / tournants, ainsi que les lanelets en ligne droite qui intersectent d'autres voies (croisement / convergence), ont-ils un `turn_direction` ? |
 | 2. right_of_way | Les paires de lanelets qui se croisent / convergent ont-elles un élément de régulation `right_of_way` ? Les `right_of_way` existants sont-ils référencés par la lanelet prioritaire, et les deux lanelets se chevauchent-elles réellement (ERROR si elles ne se chevauchent pas du tout) ? |
 | 3. Autoware (`autoware_checking: true`) | Exécute [utils/validate_autoware_map.py](utils/validate_autoware_map.py) (version Python de `autoware_lanelet2_validation`) : erreurs de chargement de la carte, altitude `ele` des nœuds, feux de circulation, `turn_direction` des lanelets en conflit dans le graphe de routage. Les résultats `turn_direction` sont fusionnés dans la vérification 1 ; une même lanelet n'est signalée qu'une fois |
-| Notation LR (`Using_LR: true`) | Attribue un score `[WARNING p=0.77]` aux alertes des vérifications 1 et 2 signalant un `turn_direction` / `right_of_way` manquant, et les affiche par score décroissant, voir [Notation des alertes](#notation-des-alertes-using_lr) |
+| Notation LR (`Using_LR: true`) | Attribue un score `[WARNING turn_direction.missing p=0.77]` aux alertes des vérifications 1 et 2 signalant un `turn_direction` / `right_of_way` manquant, et les affiche par score décroissant, voir [Notation des alertes](#notation-des-alertes-using_lr) |
 | Extensions (`enable: true` dans `ext/<nom>/config/config.yaml`) | Par exemple, de combien un passage piéton (crosswalk) dépasse au plus latéralement de la route, voir [Extensions](#extensions-ext) |
 | Carte de chaleur (`heatmap.enabled: true`) | Liste les zones à forte concentration de problèmes et génère une carte de chaleur : la carte est colorée selon la densité de problèmes, du bleu (peu) au rouge (beaucoup), voir [Carte de chaleur des problèmes](#carte-de-chaleur-des-problèmes-heatmap) |
 
@@ -75,6 +75,7 @@ Les chemins relatifs sont relatifs à `MapChecker/`.
 |---|---|---|
 | `input` | `lanelet2_map.osm` | Carte à vérifier |
 | `ignore_file` | `config/ignore.yaml` | Lanelets ignorées manuellement ; si le fichier n'existe pas, rien n'est ignoré |
+| `issue_codes_file` | `config/issue_codes.yaml` | Codes de problème des vérifications 1 à 3 avec leur niveau et leur description (ceux des extensions sont dans `ext/<nom>/config/issue_codes.yaml`), voir [Codes de problème](#codes-de-problème-issue_codesyaml) |
 | `model_file` | `config/model.yaml` | Modèle de notation des alertes, utilisé avec `Using_LR: true` |
 | `log.enabled` / `log.dir` | `false` / `logs` | Écrit, en plus de la sortie terminal, le log `logs/map_check_YYYYmmdd_HHMMSS.log` |
 | `heatmap.enabled` | `false` | `true` : liste en fin de rapport les zones à forte concentration de problèmes et génère dans `log.dir` une carte de chaleur du même nom `map_check_YYYYmmdd_HHMMSS.png` ; nécessite matplotlib |
@@ -110,17 +111,39 @@ turn_direction: [614: "virage de route principale, pas de clignotant"]   # ignor
 right_of_way:   []        # uniquement par la vérification 2 (paires qui se chevauchent et éléments de régulation right_of_way impliquant la lanelet)
 autoware:       []        # uniquement par la vérification 3 (problèmes des feux référencés par la lanelet)
 crosswalk:      [19942]   # uniquement par l'extension crosswalk (la clé est le nom de l'extension)
+stopline.polyline: [52]  # uniquement ce type de problème (la clé est un code de problème)
 ```
 
-Chaque entrée peut être un simple id de lanelet (éventuellement négatif) ou `id: raison`. La liste d'ignorés d'une extension peut aussi être écrite dans sa propre configuration. En fin de rapport, les entrées des vérifications qui n'ont pas été exécutées sont marquées `check not run`.
+Chaque entrée peut être un simple id de lanelet (éventuellement négatif) ou `id: raison`. Avec un code de problème comme clé, seul ce type de problème est ignoré pour ces lanelets, les autres problèmes de la même vérification restent signalés. La liste d'ignorés d'une extension peut aussi être écrite dans sa propre configuration. En fin de rapport, les entrées des vérifications qui n'ont pas été exécutées sont marquées `check not run`.
 
 ## Sortie
 
-- `[WARNING]` (jaune) : problème à confirmer ; `[ERROR]` (rouge) : erreur certaine, par exemple deux lanelets d'un `right_of_way` qui ne se chevauchent pas du tout, ou une erreur de chargement de la carte.
+- `[WARNING]` (jaune) : problème à confirmer ; `[ERROR]` (rouge) : erreur certaine, par exemple deux lanelets d'un `right_of_way` qui ne se chevauchent pas du tout, ou une erreur de chargement de la carte. Chaque ligne porte le code du problème : `[WARNING stopline.polyline] stop_line 52: ...`, voir [Codes de problème](#codes-de-problème-issue_codesyaml).
 - La vérification 1 affiche les alertes dans l'ordre des id de lanelet. La vérification 2 affiche d'abord les problèmes des éléments de régulation `right_of_way` existants, puis les alertes de `right_of_way` manquant, groupées par zone (en général une intersection), avec pour chaque groupe le centre et les lanelets concernées.
 - Avec `Using_LR: true`, l'ordre est différent, voir [Ordre de sortie](#ordre-de-sortie).
-- En fin de rapport, le Summary donne le nombre d'alertes de chaque vérification, les Hotspots listent les zones à forte concentration de problèmes (avec `heatmap.enabled: true`, voir [Carte de chaleur des problèmes](#carte-de-chaleur-des-problèmes-heatmap)), et Ignored lanelets indique l'usage de la liste d'ignorés (absente de la carte, hors AOI, nombre de problèmes masqués).
+- En fin de rapport, le Summary donne le nombre d'alertes de chaque vérification et le nombre de problèmes de chaque code (`issues by code`), les Hotspots listent les zones à forte concentration de problèmes (avec `heatmap.enabled: true`, voir [Carte de chaleur des problèmes](#carte-de-chaleur-des-problèmes-heatmap)), et Ignored lanelets indique l'usage de la liste d'ignorés (absente de la carte, hors AOI, nombre de problèmes masqués).
 - Code de sortie : `0` aucun problème, `1` au moins un WARNING / ERROR non ignoré, `2` erreur d'option ou d'environnement. Utilisable en CI.
+
+### Codes de problème `issue_codes.yaml`
+
+Chaque type de problème a un code fixe `<vérification>.<problème>` (par exemple `turn_direction.missing`, `stopline.polyline`, `trafficlight.not_recognized`), enregistré avec son niveau, un titre et une description. Les programmes, les tests et les listes d'ignorés s'appuient sur le code, pas sur le texte du message, qui peut changer. Chaque vérification a son propre fichier :
+
+| Fichier | Codes | Clés |
+|---|---|---|
+| [config/issue_codes.yaml](config/issue_codes.yaml) | vérifications 1 à 3 (`turn_direction.*`, `right_of_way.*`, `autoware.*`) et `ext.crashed` | le code complet, par exemple `right_of_way.missing` |
+| `ext/<nom>/config/issue_codes.yaml` | ceux de l'extension `<nom>`, obligatoire pour chaque extension | le nom du problème seul : `polyline` dans `ext/stopline/` est le code `stopline.polyline` |
+
+```yaml
+# ext/stopline/config/issue_codes.yaml
+polyline:
+  severity: warning        # error | warning | off
+  title: stop line with more than 2 points (polyline)
+  description: A stop line should be a straight line of 2 points; ...
+```
+
+- **Niveau** : `severity` décide si le problème est un WARNING ou une ERROR (et donc le code de sortie) ; `off` ne le signale plus du tout, le Summary indique combien n'ont pas été signalés (`not reported (severity off ...)`).
+- **Ignorer un type de problème** : un code comme clé de `config/ignore.yaml`, voir [Liste d'ignorés](#liste-dignorés-configignoreyaml).
+- **Nouveau type de problème** : tout code utilisé par une vérification doit être enregistré dans son fichier (un code inconnu est signalé comme un plantage de la vérification) ; un code d'extension dans `config/issue_codes.yaml` est refusé. `tests/test_issue_codes.py` vérifie, fichier par fichier, que les codes du code source et ceux des fichiers correspondent. La liste des codes et de leurs conditions se trouve dans [doc/checkinglist.fr.md](doc/checkinglist.fr.md).
 
 La vérification Autoware peut aussi être exécutée seule (après avoir sourcé ROS) :
 
@@ -186,17 +209,17 @@ Dans le terminal et le log, les alertes notées de chaque vérification sont aff
 
 ```
 === Check 1: turn_direction on curves / turns (angle threshold 30°, window 30 m) ===
-[WARNING p=0.77] lanelet 12528: curve without turn_direction (geometry turns right, suggest turn_direction=right) | ...
-[WARNING p=0.77] lanelet 17361: curve without turn_direction (geometry turns right, suggest turn_direction=right) | ...
+[WARNING turn_direction.missing p=0.77] lanelet 12528: curve without turn_direction (geometry turns right, suggest turn_direction=right) | ...
+[WARNING turn_direction.missing p=0.77] lanelet 17361: curve without turn_direction (geometry turns right, suggest turn_direction=right) | ...
 ...
-[WARNING p=0.07] lanelet 13646: intersects other lanes without turn_direction (geometry straight, ...) | ...
+[WARNING turn_direction.missing_straight p=0.07] lanelet 13646: intersects other lanes without turn_direction (geometry straight, ...) | ...
 
 === Check 2: right_of_way on overlapping lanelets (min overlap area 1.0 m²) ===
 -- Area 1, center (30772.0, 10528.6), lanelets: 9 14 445 450 10735 10754
 ...
 -- Area 26, center (30572.3, 11333.2), lanelets: 16541 16550 17931 17936
-[WARNING p=0.84] lanelet 12494 / 19041 (area 12): merge overlap (~13.5 m² at (31465.0, 9665.5)) without right_of_way
-[WARNING p=0.69] lanelet 14182 / 17379 (area 22): merge overlap (~12.9 m² at (30830.3, 11337.8)) without right_of_way
+[WARNING right_of_way.missing p=0.84] lanelet 12494 / 19041 (area 12): merge overlap (~13.5 m² at (31465.0, 9665.5)) without right_of_way
+[WARNING right_of_way.missing p=0.69] lanelet 14182 / 17379 (area 22): merge overlap (~12.9 m² at (30830.3, 11337.8)) without right_of_way
 ...
 ```
 
@@ -333,6 +356,7 @@ MapChecker/
   config/
     config.yaml               configuration des vérifications
     ignore.yaml               lanelets ignorées manuellement
+    issue_codes.yaml          codes de problème des vérifications 1 à 3 avec leur niveau et leur description
     dataset.yaml              configuration de train_model.py (liste des dépôts de cartes, règles d'étiquetage)
     model.yaml                modèle de notation des alertes (généré par train_model.py)
   utils/
@@ -349,6 +373,7 @@ MapChecker/
     features.py               caractéristiques des alertes
     model.py                  lecture du modèle et notation
     ignore.py                 liste d'ignorés
+    issue_codes.py            lecture des fichiers issue_codes.yaml
     config.py                 lecture de config.yaml
     printer.py                sortie terminal / log
     heatmap.py                carte de chaleur et zones à forte concentration de problèmes

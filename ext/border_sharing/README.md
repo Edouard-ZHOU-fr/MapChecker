@@ -73,7 +73,7 @@ python3 check_lanelet_map.py --only-ext border_sharing --set border_sharing.max_
 同向车道的例子（sqy）：
 
 ```
-[WARNING] lanelet 12057 left (way 12056) / lanelet 12075 right (way 12072): boundaries coincide over 21.0 m (100% of the shorter) but are different ways, gap 0.26 m between the lanes; they are not adjacent in the routing graph, no lane change between them | at (29967.8, 4605.0)
+[WARNING border_sharing.not_shared] lanelet 12057 left (way 12056) / lanelet 12075 right (way 12072): boundaries coincide over 21.0 m (100% of the shorter) but are different ways, gap 0.26 m between the lanes; they are not adjacent in the routing graph, no lane change between them | at (29967.8, 4605.0)
 ```
 
 输出中给出两条线的相对位置，取重合部分有符号距离的中位数：
@@ -88,7 +88,7 @@ python3 check_lanelet_map.py --only-ext border_sharing --set border_sharing.max_
 
 ```
 === Ext border_sharing: side-by-side lanelets sharing their boundary (coinciding within 1.00 m along >= 80% of the boundary) ===
-[WARNING] lanelet 5353 left (way 9270) / lanelet 9684 left (way 9681), opposite directions: boundaries coincide over 80.1 m (100% of the shorter) but are different ways, overlap 0.47 m between the lanes; opposite lanes should share one center line | at (71816.3, 24414.8)
+[WARNING border_sharing.not_shared] lanelet 5353 left (way 9270) / lanelet 9684 left (way 9681), opposite directions: boundaries coincide over 80.1 m (100% of the shorter) but are different ways, overlap 0.47 m between the lanes; opposite lanes should share one center line | at (71816.3, 24414.8)
 ...
 107 pairs of side-by-side lanelets: 83 share their boundary, 24 do not
 ```

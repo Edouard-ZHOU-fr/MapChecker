@@ -56,9 +56,9 @@ class Result:
     map_version: str = ""
     n_lanelets: int = 0
     n_reg_elems: int = 0
-    load: list = field(default_factory=list)           # parse errors / format_version issues
+    load: list = field(default_factory=list)           # parse errors / format_version issues [(issue code, issue)]
     elevation: list = field(default_factory=list)      # ids of nodes missing the ele tag
-    traffic_light: list = field(default_factory=list)  # [(issue, ids of lanelets referencing this traffic light)]
+    traffic_light: list = field(default_factory=list)  # [(issue code, issue, ids of lanelets referencing the light)]
     turn_direction: dict = None                        # {lanelet id: conflicting lanelet / area ids}; None means not checked
 
 
@@ -78,9 +78,11 @@ def check_format_version(osm_root, res):
     major = parse_major_version(res.format_version)
     if major is None:
         # The loader only rejects missing versions or ones not starting with a digit; unparsable ones (e.g. "2a") count here too
-        res.load.append(f"map has no format_version(null) or non semver-style format_version({res.format_version})")
+        res.load.append(("autoware.format_version", f"map has no format_version(null) or non semver-style "
+                                                    f"format_version({res.format_version})"))
     elif major > SUPPORTED_FORMAT_VERSION:
-        res.load.append(f"format_version({major}) of the map is larger than the supported version({SUPPORTED_FORMAT_VERSION})")
+        res.load.append(("autoware.format_version_unsupported", f"format_version({major}) of the map is larger than "
+                                                                f"the supported version({SUPPORTED_FORMAT_VERSION})"))
 
 
 def check_elevation_tag(osm_root):
@@ -103,17 +105,20 @@ def check_traffic_light(lanelet_map):
         ids = [str(i) for i in sorted(users[light_id])]
         light_bulbs = light.lightBulbs()
         if not light_bulbs:
-            issues.append((f"regulatory element traffic light {light_id} is missing optional light_bulb member. "
+            issues.append(("autoware.missing_light_bulbs",
+                           f"regulatory element traffic light {light_id} is missing optional light_bulb member. "
                            "You won't be able to use region_tlr node with this map", ids))
         for light_string in light_bulbs:
             if "traffic_light_id" not in light_string.attributes:
-                issues.append((f"light_bulb {light_string.id} is missing traffic_light_id tag", ids))
+                issues.append(("autoware.light_bulb_missing_id",
+                               f"light_bulb {light_string.id} is missing traffic_light_id tag", ids))
         for base_string_or_poly in light.trafficLights:
             if not isinstance(base_string_or_poly, (LineString3d, ConstLineString3d)):
-                issues.append((f"traffic_light {base_string_or_poly.id} is polygon, "
+                issues.append(("autoware.traffic_light_polygon", f"traffic_light {base_string_or_poly.id} is polygon, "
                                "and only linestring class is currently supported for traffic lights", ids))
             if "height" not in base_string_or_poly.attributes:
-                issues.append((f"traffic_light {base_string_or_poly.id} is missing height tag", ids))
+                issues.append(("autoware.traffic_light_missing_height",
+                               f"traffic_light {base_string_or_poly.id} is missing height tag", ids))
     return issues
 
 
@@ -140,10 +145,10 @@ def validate(map_path):
     try:
         lanelet_map, errors = lanelet2.io.loadRobust(map_path, MGRSProjector(Origin(0.0, 0.0)))
     except Exception as e:  # fatal lanelet2 parse error (not caught in validation.cpp, which simply crashes)
-        res.load.append(f"failed to load map: {e}")
+        res.load.append(("autoware.load_failed", f"failed to load map: {e}"))
         return res
     # The first entry of errors is the title "Errors ocurred while parsing Lanelet Map:", each other one starts with "\t- "
-    res.load += [f"parse error: {error.strip().removeprefix('- ')}" for error in errors
+    res.load += [("autoware.parse_error", f"parse error: {error.strip().removeprefix('- ')}") for error in errors
                  if not error.startswith("Errors ocurred")]
     res.n_lanelets, res.n_reg_elems = len(lanelet_map.laneletLayer), len(lanelet_map.regulatoryElementLayer)
     res.traffic_light = check_traffic_light(lanelet_map)
@@ -171,9 +176,9 @@ def main():
         turn_direction = [f"lanelet {lid} seems to be intersecting other lanelet, but does not have turn_direction "
                           f"tagging. (conflicting: {', '.join(ids)})" for lid, ids in res.turn_direction.items()]
     sections = {
-        "load": res.load,
+        "load": [msg for _, msg in res.load],
         "elevation": [f"failed to find elevation tag for node: {nid}" for nid in res.elevation],
-        "traffic_light": [msg for msg, _ in res.traffic_light],
+        "traffic_light": [msg for _, msg, _ in res.traffic_light],
         "turn_direction": turn_direction,
     }
     for name, issues in sections.items():

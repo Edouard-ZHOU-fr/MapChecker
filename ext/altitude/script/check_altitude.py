@@ -36,6 +36,7 @@ DEFAULT_CONFIG = {
 }
 
 MIN_STAT_LENGTH = 1.0  # slope stats use only point pairs >= this far apart horizontally (m), too-close slopes are meaningless
+ISSUES = {"step": "step", "spike": "spike", "cross": "cross_slope"}  # issue name of each kind (config/issue_codes.yaml)
 
 
 def configure(cfg):
@@ -245,19 +246,19 @@ def check(ctx, cfg, out):
     found, stats = find_abrupt(lanelets, cfg)
     reported, lines = [], []  # reported abrupt points (not ignored, number is index + 1) and their output line
     for a in found:
-        before = out.warnings
-        text = f"#{len(reported) + 1} {a.text}"
-        out.warn(text, tuple(dict.fromkeys(lid for lid, _ in a.users)), pos=a.pos)
-        if out.warnings > before:
+        line = out.issue(ISSUES[a.kind], f"#{len(reported) + 1} {a.text}",
+                         tuple(dict.fromkeys(lid for lid, _ in a.users)), pos=a.pos)
+        if line:
             reported.append(a)
-            lines.append(f"[WARNING] {text}")
+            lines.append(line)
 
     missing = missing_elevation(lanelets)
     for lid, nodes in missing.items():
         ll = lanelets[lid]
-        out.warn(f"lanelet {lid}: no elevation (ele) on node{'s' if len(nodes) > 1 else ''} {' '.join(nodes)}, "
-                 f"not checked", (lid,),
-                 pos=(ll.left[len(ll.left) // 2] + ll.right[len(ll.right) // 2]) / 2.0)
+        out.issue("missing_elevation",
+                  f"lanelet {lid}: no elevation (ele) on node{'s' if len(nodes) > 1 else ''} {' '.join(nodes)}, "
+                  f"not checked", (lid,),
+                  pos=(ll.left[len(ll.left) // 2] + ll.right[len(ll.right) // 2]) / 2.0)
 
     z = np.concatenate([np.r_[ll.left_z, ll.right_z] for ll in lanelets.values()] or [np.array([])])
     z = z[np.isfinite(z)]
@@ -288,5 +289,5 @@ def check(ctx, cfg, out):
         open_window(ctx, lanelets, reported, lines, cfg["max_profiles"])
         out.info("Trend chart window: opens after the report, click an abrupt point or a lanelet to show its "
                  "elevation profile in a new window")
-    if out.warnings == 0:
+    if out.total == 0:
         out.ok("No abrupt elevation change on the checked lane boundaries")

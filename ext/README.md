@@ -31,6 +31,7 @@ python3 check_lanelet_map.py --set crosswalk.max_extension=1.0   # 覆盖扩展�
 
 - `config/ignore.yaml` 中 `all` 下的 lanelet 在扩展检查中也忽略。
 - 只在某项扩展中忽略的 lanelet 可以写在该扩展配置的 `ignore` 中，也可以写在 `config/ignore.yaml` 中以扩展名称为键的列表里（例如 `crosswalk: [19942]`）。
+- 只忽略某一类问题时，在 `config/ignore.yaml` 中以 issue code 为键（例如 `crosswalk.beyond_road: [19942]`）。
 
 ## 新建扩展
 
@@ -41,15 +42,16 @@ python3 check_lanelet_map.py --set crosswalk.max_extension=1.0   # 覆盖扩展�
    ```
 
 2. 改写 `script/check_template.py`（可以改名）：`DEFAULT_CONFIG` 中写参数的默认值，`check()` 中写检查逻辑，接口见下文。
-3. 改写 `config/config.yaml`（参数，以及 `enable: true`）和 `README.md`（第一行标题会显示在 `--list-ext` 中）。
-4. 试运行，并运行测试。测试会自动加载 `ext/` 下的每个扩展，在一张合成地图上运行一次：
+3. 在本扩展的 `config/issue_codes.yaml` 中登记它报告的每一类问题（必需，没有这个文件的扩展不能运行）：键只写问题名（如 `missing_tag`），写上 `severity`（`error` / `warning`）和 `title`，需要时加 `description`。报告中的 code 为 `<目录名>.<问题名>`（如 `my_check.missing_tag`），所以改目录名不用改 code。扩展的 code 不能写在 `config/issue_codes.yaml` 中。
+4. 改写 `config/config.yaml`（参数，以及 `enable: true`）和 `README.md`（第一行标题会显示在 `--list-ext` 中）。
+5. 试运行，并运行测试。测试会自动加载 `ext/` 下的每个扩展，在一张合成地图上运行一次；`tests/test_issue_codes.py` 检查每个扩展都有自己的 `issue_codes.yaml`，脚本中 `out.issue()` 用到的问题名都已登记、登记的都被用到：
 
    ```bash
    python3 check_lanelet_map.py --only-ext my_check
    python3 -m unittest discover -s tests
    ```
 
-5. 在本文件开头的表格中加上一行。
+6. 在本文件开头的表格中加上一行，并在 [doc/checkinglist.md](../doc/checkinglist.md) 中写明每个 code 的输出条件。
 
 ## 目录结构
 
@@ -57,6 +59,7 @@ python3 check_lanelet_map.py --set crosswalk.max_extension=1.0   # 覆盖扩展�
 ext/my_check/
   README.md             说明；第一行标题用于 --list-ext
   config/config.yaml    配置: enable / script / ignore 由框架处理，其余参数原样传给 check()
+  config/issue_codes.yaml  本扩展报告的问题: {问题名: severity, title, description}，code 为 <目录名>.<问题名>
   script/check_*.py     入口脚本
   script/_helper.py     (可选) 辅助模块，入口中用 from ._helper import f 导入
 ```
@@ -73,7 +76,7 @@ ext/my_check/
 
 配置的合并顺序：框架的默认值（`enable: false`、`script`、`ignore: []`）→ `DEFAULT_CONFIG` → `config/config.yaml` → `--set`，最后调用 `configure()`。`cfg["ignore"]` 已转成 `{lanelet id: 原因}`。`--set` 的值按 YAML 解析：`1.0` 为 float，`true` 为 bool，`'[a, b]'` 为列表。
 
-`check()` 抛出异常时，框架报 `[ERROR] extension <名称> crashed: ...`，并在输出和日志中附上 traceback，计入退出码；之后的扩展照常运行。
+`check()` 抛出异常时（包括用了未登记的 code），框架报 `[ERROR ext.crashed] extension <名称> crashed: ...`，并在输出和日志中附上 traceback，计入退出码；之后的扩展照常运行。
 
 ### `ctx`：[utils.context.MapContext](../utils/context.py)
 
@@ -109,10 +112,10 @@ ext/my_check/
 | 方法 / 属性 | 说明 |
 |---|---|
 | `out.header(text)` | 本检查的标题，约定为 `f"Ext {out.category}: ..."` |
-| `out.warn(text, ids=(), pos=None)` / `out.error(...)` | `[WARNING]` / `[ERROR]`。`ids` 为相关 lanelet id：其中有 lanelet 在忽略列表中时不输出；`pos` 为问题的坐标 `[x, y]`，用于热力图，`None` 时取 `ids` 中 lanelet 中心线的中点 |
+| `out.issue(name, text, ids=(), pos=None)` | 报告一条问题：`[WARNING <扩展名>.<name>] text` 或 `[ERROR <扩展名>.<name>] text`，由问题名 `name` 在本扩展 `config/issue_codes.yaml` 中的 `severity` 决定，`off` 时不输出。`name` 只写问题名，不带扩展名；未登记时抛出 `ValueError`。`ids` 为相关 lanelet id：其中有 lanelet 在本检查或这个 code 的忽略列表中时不输出；`pos` 为问题的坐标 `[x, y]`，用于热力图，`None` 时取 `ids` 中 lanelet 中心线的中点。返回输出的整行，没有输出时返回 `None` |
 | `out.info(text)` / `out.ok(text)` | 普通输出 / `[OK]` |
 | `out.category` | 检查项名称（即目录名） |
-| `out.warnings` / `out.errors` / `out.ignored` | 本检查已输出的 WARNING / ERROR 数，以及因忽略列表而未输出的条数 |
+| `out.warnings` / `out.errors` / `out.total` / `out.ignored` | 本检查已输出的 WARNING / ERROR / 两者合计的条数，以及因忽略列表而未输出的条数。级别可以在 `issue_codes.yaml` 中修改，统计"发现了几处问题"时用 `out.total` 或 `out.issue()` 的返回值，不要假定某个 code 一定是 WARNING |
 
 所有输出都要经过 `out`，不要直接 `print`，否则不会写入日志。
 

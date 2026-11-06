@@ -8,12 +8,27 @@
 
 ### 新增
 
+- **issue code**：每一类问题都有一个固定的 code `<检查项>.<问题>`，输出为 `[WARNING stopline.polyline] ...`，登记时带有级别、标题和说明。检查 1~3 的登记在新文件 [config/issue_codes.yaml](../config/issue_codes.yaml) 中（配置项 `issue_codes_file`），每个扩展的登记在它自己的 `ext/<名称>/config/issue_codes.yaml` 中（键只写问题名）：
+  - `severity` 决定级别：改成 `error` / `warning` 即改变级别，改成 `off` 则不再报告这类问题（Summary 中给出未报告的条数）。
+  - Summary 新增 `issues by code`：按 code 统计问题数。
+  - `config/ignore.yaml` 可以用 code 作为键，只忽略这些 lanelet 上的这一类问题（如 `stopline.polyline: [52]`）。
+  - 测试改为断言 code；新增 `tests/test_issue_codes.py`，逐个文件检查源码中用到的 code 与登记的 code 一一对应。
+  - 训练数据（`train_model.py`）不受 `severity` 设置的影响。
+
+  所有 code 及其输出条件见 [checkinglist.md](checkinglist.md)，用法见 [README](README.zh.md#issue-code-issue_codesyaml)。
 - **扩展 `stopline`：检查 traffic_sign / road_marking 规则元素对停止线的引用**，要求与 autoware_lanelet2_map_validator 的 `regulatory_element_details_for_traffic_signs`、`road_markings` 一致：
   - traffic_sign：`refers` 为标志牌，`ref_line` 为停止线。停车标志没有 `ref_line` 时报 ERROR（Autoware 的 stop_line 模块在 `ref_line` 前停车，车辆不会在这里停）；停止线被放进 `refers` 时提示改 role。
   - road_marking：恰好一个 `refers`，且为 `type=stop_line`；不是时 Autoware 不把它当作停止线（如路口停止线）。
   - 在现有地图上发现：lanelet2_map 的 traffic_sign 51096 把停止线放进了 `refers`，没有 `ref_line`；lanelet2_map 2 个、buc 4 个 road_marking 引用的停止线是 `type=line_thin`。
 
   见 [ext/stopline/README.md](../ext/stopline/README.md#引用)。
+
+### 变更
+
+- **不兼容**：每个扩展都必须有 `config/issue_codes.yaml`，没有时不能运行。扩展的 `out.warn(text, ...)` / `out.error(text, ...)` 改为 `out.issue(name, text, ids=(), pos=None)`：`name` 为本扩展 `config/issue_codes.yaml` 中的问题名，级别由其 `severity` 决定，未登记时该扩展报 `ext.crashed`；返回输出的整行（没有输出时为 `None`）。新增 `out.total`（WARNING + ERROR）。`Printer.warn()` / `error()` 改为 `Printer.issue(category, code, ...)`，`Printer.is_ignored()` 多了 `code` 参数。见 [ext/README.md](../ext/README.md#oututilsprinterscopedprinter)。
+- 输出行的前缀由 `[WARNING]` / `[ERROR]` / `[WARNING p=0.77]` 变为 `[WARNING code]` / `[ERROR code]` / `[WARNING code p=0.77]`。
+- `utils.validate_autoware_map.Result` 的 `load` 和 `traffic_light` 中每条问题带上 code：`[(code, 信息)]` / `[(code, 信息, lanelet ids)]`。
+- 扩展的 `out.ignored` 改为按问题计数（原来按被忽略的 id 计数，一条问题涉及多个被忽略的 id 时会多计）。
 
 ### 修复
 

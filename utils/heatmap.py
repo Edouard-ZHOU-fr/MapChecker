@@ -342,7 +342,7 @@ def draw_layers(ax, h):
         artist = ax.scatter(pts[sel, 0], pts[sel, 1], zorder=zorder, label=label, **style)
         layers.append(Layer(kind, label, [artist], targets, style))
 
-    error = np.array([item[3].startswith("[ERROR]") for item in items], dtype=bool)
+    error = np.array([item[3].startswith("[ERROR") for item in items], dtype=bool)
     for category, marker in MARKERS.items():
         sel = [i for i, item in enumerate(items) if item[0] == category and not error[i]]
         if sel:

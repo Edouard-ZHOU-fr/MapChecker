@@ -59,7 +59,7 @@ python3 check_lanelet_map.py --only-ext crosswalk --set crosswalk.max_extension=
 === Ext crosswalk: how far crosswalks extend beyond the road (max 2.00 m) ===
 crosswalk 1824: extends up to 1.27 m beyond the road | end (72096.1, 24113.9): 1.27 m beyond lanelet 5115, end (72100.4, 24120.4): 1.13 m beyond lanelet 11928
 ...
-[WARNING] crosswalk 9039: extends up to 9.90 m beyond the road (max 2.00 m) | end (72839.5, 24019.6): 9.90 m beyond lanelet 9120, end (72849.2, 24008.9): 2.63 m beyond lanelet 9120
+[WARNING crosswalk.beyond_road] crosswalk 9039: extends up to 9.90 m beyond the road (max 2.00 m) | end (72839.5, 24019.6): 9.90 m beyond lanelet 9120, end (72849.2, 24008.9): 2.63 m beyond lanelet 9120
 ...
 46 crosswalks: 19 extend more than 2.00 m beyond the road
 ```

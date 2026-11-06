@@ -33,6 +33,7 @@ from utils.config import BASE_DIR, DEFAULT_CONFIG_PATH, load_config, resolve
 from utils.context import MapContext
 from utils.features import FEATURES
 from utils.ignore import ignore_by_category, load_ignore
+from utils.issue_codes import IssueCodes
 from utils.lanelet_map import load_map
 from utils.printer import Printer
 
@@ -54,7 +55,7 @@ def map_revisions(repo, map_rel, include_working_copy):
     return revs
 
 
-def check_version(repo, map_rel, rev, opts, autoware):
+def check_version(repo, map_rel, rev, opts, autoware, codes):
     """
     Run the checks on one revision of the map (executed in a subprocess), also the Autoware check when autoware is True.
     Returns (warnings {(check, key): features}, {lanelet id: turn_direction}, lanelet pairs covered by right_of_way)
@@ -65,7 +66,7 @@ def check_version(repo, map_rel, rev, opts, autoware):
     else:
         data = git(repo, "show", f"{rev}:{map_rel}")
     lanelet_map = load_map(io.BytesIO(data))
-    out = Printer(False)
+    out = Printer(False, codes=codes)
     with redirect_stdout(io.StringIO()):
         result = None
         if autoware:
@@ -75,7 +76,7 @@ def check_version(repo, map_rel, rev, opts, autoware):
                 f.flush()
                 result = _quiet_stderr(validate, f.name)
         run_core_checks(MapContext(lanelet_map, opts), out, result)
-    issues = {(i.category, "/".join(sorted(i.ids, key=int))): i.features for i in out.issues}
+    issues = {(i.category, "/".join(sorted(i.ids, key=int))): (i.code, i.features) for i in out.issues}
     return (issues, {k: ll.turn_direction for k, ll in lanelet_map.lanelets.items()},
             covered_pairs(lanelet_map.reg_elems))
 
@@ -115,14 +116,15 @@ def label_repo(name, results, ignore, min_rounds):
                 s["label"] = 1
                 fixes[s["category"]].add(n)
             samples.append(s)
-        for (category, key), features in issues.items():
+        for (category, key), (code, features) in issues.items():
             s = active.setdefault((category, key), {"repo": name, "category": category, "key": key, "first": n,
                                                     "first_rev": rev, "label": "", "reason": ""})
-            s.update(last_rev=rev, features=features, turn_direction=tds.get(key))
+            s.update(last_rev=rev, code=code, features=features, turn_direction=tds.get(key))
 
     # warnings kept until the latest revision
     for s in active.values():
-        if any(i in ignore[s["category"]] for i in s["key"].split("/")):
+        ignored = {**ignore[s["category"]], **ignore.get(s["code"], {})}  # by the check or by the issue code
+        if any(i in ignored for i in s["key"].split("/")):
             s.update(label=0, reason="ignored")
         elif sum(i > s["first"] for i in fixes[s["category"]]) >= min_rounds:
             s.update(label=0, reason="survived")
@@ -156,6 +158,8 @@ def build_dataset(config_path=DEFAULT_DATASET_CONFIG):
     ds, out_dir = load_dataset_config(config_path)
     cfg = load_config(DEFAULT_CONFIG_PATH)
     opts = {k: cfg[k] for k in CHECK_OPTS}
+    # every code a WARNING: the training data does not depend on the severities chosen in config/issue_codes.yaml
+    codes = IssueCodes.load(cfg["issue_codes_file"]).as_warnings()
     map_rel = ds.get("map", "lanelet2_map.osm")
     autoware = ds.get("autoware_checking", False)
     if autoware:
@@ -170,14 +174,15 @@ def build_dataset(config_path=DEFAULT_DATASET_CONFIG):
         if not os.path.isdir(os.path.join(path, ".git")):
             print(f"{path}: not a git repository, skipped")
             continue
-        ignore = ignore_by_category(load_ignore(resolve(r["ignore_file"])) if r.get("ignore_file") else [])
+        ignore = ignore_by_category(load_ignore(resolve(r["ignore_file"]), codes=codes.codes)
+                                    if r.get("ignore_file") else [])
         repos.append((os.path.basename(path), path, map_revisions(path, map_rel, ds.get("include_working_copy", True)),
                       ignore))
     print(f"Replaying {sum(len(r[2]) for r in repos)} map versions of {len(repos)} repositories ...")
 
     samples = []
     with ProcessPoolExecutor() as pool:
-        futures = {(name, rev): pool.submit(check_version, path, map_rel, rev, opts, autoware)
+        futures = {(name, rev): pool.submit(check_version, path, map_rel, rev, opts, autoware, codes)
                    for name, path, revs, _ in repos for rev in revs}
         for name, path, revs, ignore in repos:
             results = []

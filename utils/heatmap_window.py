@@ -46,7 +46,7 @@ GRID = "#ecebe6"             # grid of the map
 ACCENT = "#2a78d6"           # buttons, focus
 ACCENT_DARK = "#1c5cab"
 SELECTED = "#dce9f9"         # selected rows of the list
-WARNING_INK = "#a35200"      # [WARNING ...] / [ERROR] in the details
+WARNING_INK = "#a35200"      # [WARNING ...] / [ERROR ...] in the details
 ERROR_INK = "#b42318"
 FONTS = ("Ubuntu", "Noto Sans", "Cantarell", "DejaVu Sans")  # the first one installed
 MONO_FONTS = ("Ubuntu Mono", "DejaVu Sans Mono")
@@ -591,7 +591,7 @@ class HeatmapWindow:
     def _numbers(self):
         """(label, value) of the number tiles"""
         h = self.h
-        errors = sum(item[3].startswith("[ERROR]") for item in h.items)
+        errors = sum(item[3].startswith("[ERROR") for item in h.items)
         numbers = [("Issues", f"{h.core.sum()}")]
         if h.weighted:
             numbers.append(("Expected true", f"{h.weights[h.core].sum():.1f}"))
@@ -777,12 +777,12 @@ class HeatmapWindow:
             self.details.insert("end", "\n")
 
     def _lines(self, issues):
-        """Lines of the report of the issues: the [WARNING ...] / [ERROR] prefix in the color of its status"""
+        """Lines of the report of the issues: the [WARNING ...] / [ERROR ...] prefix in the color of its status"""
         lines = []
         for i in issues:
             line = self.h.items[i][3]
             prefix, rest = line.split("] ", 1) if "] " in line else ("", line)
-            status = "error" if line.startswith("[ERROR]") else "warning"
+            status = "error" if line.startswith("[ERROR") else "warning"
             lines.append([(prefix + "] ", status), (rest, "line")] if prefix else [(rest, "line")])
         return lines
 

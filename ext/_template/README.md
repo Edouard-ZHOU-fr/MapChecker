@@ -20,10 +20,20 @@ python3 check_lanelet_map.py --only-ext _template --set _template.required_tags=
 | `required_tags` | `[speed_limit]` | 车辆 lanelet 必须有的标签 |
 | `ignore` | `[]` | 本检查忽略的 lanelet id，写法同 `config/ignore.yaml` |
 
+## 问题 `config/issue_codes.yaml`
+
+本检查报告的每一类问题都登记在这里（每个扩展都必须有这个文件），`severity` 决定级别，改成 `off` 则不再报告：
+
+| 问题名 | code | 级别 | 说明 |
+|---|---|---|---|
+| `missing_tag` | `_template.missing_tag` | WARNING | 车辆 lanelet 缺少 `required_tags` 中的标签 |
+
+脚本中用 `out.issue("missing_tag", ...)` 报告，报告中的 code 为 `<目录名>.missing_tag`：复制成 `ext/my_check/` 后自动变成 `my_check.missing_tag`。新增一类问题时，先在这个文件中加一项。
+
 ## 输出
 
 ```
 === Ext _template: vehicle lanelets with tags speed_limit ===
-[WARNING] lanelet 1234: missing tag speed_limit
+[WARNING _template.missing_tag] lanelet 1234: missing tag speed_limit
 279 vehicle lanelets checked: 1 with missing tags
 ```

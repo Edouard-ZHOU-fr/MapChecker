@@ -157,6 +157,7 @@ class ExtensionTest(unittest.TestCase):
         ext = extmod.load(extmod.discover()["stopline"])
         out, text = run_extensions([ext], path)
         self.assertEqual((out.count["stopline"], out.errors["stopline"]), (2, 1), text)
+        self.assertEqual(dict(out.by_code), {"stopline.polyline": 2, "stopline.too_few_points": 1})
         self.assertIn("stop_line 52: 3 points (polyline), should be a straight line of 2 points; node 34 is 0.50 m "
                       "off the line between its ends (length 3.6 m) | lanelet 21", text)
         self.assertIn("stop_line 53: 3 points (polyline), should be a straight line of 2 points; node 36 is 0.00 m", text)
@@ -197,20 +198,27 @@ class ExtensionTest(unittest.TestCase):
         ext = extmod.load(extmod.discover()["stopline"])
         out, text = run_extensions([ext], path)
         self.assertEqual((out.count["stopline"], out.errors["stopline"]), (4, 4), text)
-        self.assertIn("[ERROR] traffic_sign 61: no stop line (ref_line): Autoware's stop_line module stops at the "
-                      "ref_line, the vehicle does not stop at this sign; stop line way 51 is in role refers, change its "
-                      "role to ref_line | lanelet 21 at (10.0, 1.8)", text)
+        self.assertEqual(dict(out.by_code), {
+            "stopline.sign_no_stop_line": 1, "stopline.sign_ref_line_type": 1, "stopline.sign_missing": 1,
+            "stopline.marking_line_type": 1, "stopline.marking_refers_count": 1, "stopline.marking_ref_line": 1,
+            "stopline.member_not_way": 1, "stopline.sign_stop_line_in_refers": 1})
+        self.assertIn("[ERROR stopline.sign_no_stop_line] traffic_sign 61: no stop line (ref_line): Autoware's "
+                      "stop_line module stops at the ref_line, the vehicle does not stop at this sign; stop line way "
+                      "51 is in role refers, change its role to ref_line | lanelet 21 at (10.0, 1.8)", text)
         self.assertNotIn("traffic_sign 62", text)
-        self.assertIn("[WARNING] traffic_sign 63: ref_line way 53 has type=line_thin, not stop_line", text)
-        self.assertIn("[ERROR] traffic_sign 64: no traffic sign (refers way with type=traffic_sign)", text)
-        self.assertIn("[WARNING] road_marking 65: refers way 53 has type=line_thin, not stop_line: Autoware does not "
-                      "use it as a stop line | lanelet 21 at (30.0, 1.8)", text)
-        self.assertIn("[ERROR] road_marking 66: 2 refers, a road_marking must reference exactly one line", text)
-        self.assertIn("[WARNING] road_marking 67: ref_line 51: a road_marking references its stop line with refers "
-                      "only", text)
-        self.assertIn("[ERROR] road_marking 68: refers 999 is not a way of the map", text)
-        self.assertIn("[WARNING] traffic_sign 69: stop line way 51 is in role refers, a stop line belongs in ref_line "
-                      "| not referenced by any lanelet", text)
+        self.assertIn("[WARNING stopline.sign_ref_line_type] traffic_sign 63: ref_line way 53 has type=line_thin, not "
+                      "stop_line", text)
+        self.assertIn("[ERROR stopline.sign_missing] traffic_sign 64: no traffic sign (refers way with "
+                      "type=traffic_sign)", text)
+        self.assertIn("[WARNING stopline.marking_line_type] road_marking 65: refers way 53 has type=line_thin, not "
+                      "stop_line: Autoware does not use it as a stop line | lanelet 21 at (30.0, 1.8)", text)
+        self.assertIn("[ERROR stopline.marking_refers_count] road_marking 66: 2 refers, a road_marking must reference "
+                      "exactly one line", text)
+        self.assertIn("[WARNING stopline.marking_ref_line] road_marking 67: ref_line 51: a road_marking references its "
+                      "stop line with refers only", text)
+        self.assertIn("[ERROR stopline.member_not_way] road_marking 68: refers 999 is not a way of the map", text)
+        self.assertIn("[WARNING stopline.sign_stop_line_in_refers] traffic_sign 69: stop line way 51 is in role "
+                      "refers, a stop line belongs in ref_line | not referenced by any lanelet", text)
         self.assertIn("9 regulatory elements checked (5 traffic_sign, 4 road_marking): 4 WARNING, 4 ERROR", text)
         self.assertNotIn("stop lines not referenced", text)
 
@@ -268,9 +276,11 @@ class ExtensionTest(unittest.TestCase):
              62: {"refers": [42], "light_bulbs": [44], "ref_line": [52]}}, {22: [61], 21: [62]})
         out, text = run_extensions([ext], path)
         self.assertEqual((out.count["trafficlight"], out.errors["trafficlight"]), (3, 1), text)
-        self.assertRegex(text, r"\[ERROR\] traffic_light 62 \| lanelet 21: no light can be recognized from the lanelet "
-                               r"\(light 42: faces away, facing error [+-]180° \(max 40°\); drawn right -> left, reverse "
-                               r"its node order\)")
+        self.assertRegex(text, r"\[ERROR trafficlight.not_recognized\] traffic_light 62 \| lanelet 21: no light can "
+                               r"be recognized from the lanelet \(light 42: faces away, facing error [+-]180° "
+                               r"\(max 40°\); drawn right -> left, reverse its node order\)")
+        self.assertEqual(dict(out.by_code), {"trafficlight.crosses_other_lane": 2, "trafficlight.bulbs_offset": 1,
+                                             "trafficlight.not_recognized": 1})
         self.assertIn("traffic_light 61 (lanelet 22): stop line 51 crosses lanelet 21 (same direction, once extended "
                       "by 5 m) at (40.0, 1.8), which uses traffic_light 62", text)
         self.assertIn("traffic_light 62 (lanelet 21): stop line 52 crosses lanelet 22 (same direction, once extended "
@@ -300,11 +310,12 @@ class ExtensionTest(unittest.TestCase):
         path = self.write_traffic_light_map(
             {64: {"refers": [41], "ref_line": [54]}, 65: {"refers": [41]}}, {22: [64]})
         out, text = run_extensions([ext], path)
-        self.assertIn("[ERROR] traffic_light 64 | lanelet 22: no light can be recognized from the lanelet (light 41: "
-                      "2.0 m behind the stop line)", text)
-        self.assertIn("[ERROR] traffic light way 41 is referenced by traffic_light 64, 65", text)
-        self.assertIn("[ERROR] traffic_light 65: no stop line (ref_line)", text)
-        self.assertIn("[WARNING] traffic_light 65: not referenced by any lanelet", text)
+        self.assertIn("[ERROR trafficlight.not_recognized] traffic_light 64 | lanelet 22: no light can be recognized "
+                      "from the lanelet (light 41: 2.0 m behind the stop line)", text)
+        self.assertIn("[ERROR trafficlight.shared_light] traffic light way 41 is referenced by traffic_light 64, 65",
+                      text)
+        self.assertIn("[ERROR trafficlight.no_stop_line] traffic_light 65: no stop line (ref_line)", text)
+        self.assertIn("[WARNING trafficlight.unused] traffic_light 65: not referenced by any lanelet", text)
 
         with self.assertRaisesRegex(ValueError, "max_facing_angle"):
             extmod.load(extmod.discover()["trafficlight"], {**params, "max_facing_angle": 200})
@@ -425,7 +436,7 @@ class ExtensionTest(unittest.TestCase):
                                     if detail in plt.get_figlabels() else None)
 
         printed, title = click(20, 3.5)
-        self.assertIn("[WARNING] #1 spike at node 3", printed)
+        self.assertIn("[WARNING altitude.spike] #1 spike at node 3", printed)
         self.assertEqual(title, "#1 spike +2.00 m · lanelet 41 left")
         printed, title = click(45, 1.75)  # inside lanelet 41, far from the spike
         self.assertIn("lanelet 41 (road): 50.0 m, elevation 0.00 ~ 2.40 m, +1.00 m from start to end, "
@@ -448,7 +459,8 @@ class ExtensionTest(unittest.TestCase):
         ext = extmod.load(available["my_check"], {"required_tags": ["speed_limit", "one_way"]})
         out, text = run_extensions([ext], self.map_path)
         self.assertEqual(out.count["my_check"], 1)
-        self.assertIn("lanelet 21: missing tag one_way", text)
+        # the issue codes of the template follow the directory name
+        self.assertIn("[WARNING my_check.missing_tag] lanelet 21: missing tag one_way", text)
 
         with self.assertRaisesRegex(ValueError, "unknown parameter"):
             extmod.load(extmod.discover(ext_dir)["my_check"], {"required_tag": ["x"]})
@@ -463,22 +475,29 @@ class ExtensionTest(unittest.TestCase):
         ext_dir = os.path.join(self.tmp, "ext")
         self.write_ext(ext_dir, "broken", "def check(ctx, cfg, out):\n    raise RuntimeError('boom')\n")
         self.write_ext(ext_dir, "helped", "from ._helper import count_roads\n\n"
-                                          "def check(ctx, cfg, out):\n    out.warn(f'{count_roads(ctx)} roads')\n")
+                                          "def check(ctx, cfg, out):\n"
+                                          "    out.issue('roads', f'{count_roads(ctx)} roads')\n",
+                       codes="roads: {severity: warning, title: number of roads}\n")
         with open(os.path.join(ext_dir, "helped", "script", "_helper.py"), "w", encoding="utf-8") as f:
             f.write("def count_roads(ctx):\n    return len(ctx.vehicle)\n")
 
         available = extmod.discover(ext_dir)
         out, text = run_extensions([extmod.load(e) for e in extmod.select(available)], self.map_path)
         self.assertEqual(out.errors["broken"], 1)
-        self.assertIn("RuntimeError: boom", text)
-        self.assertIn("[WARNING] 1 roads", text)
+        self.assertIn("[ERROR ext.crashed] extension broken crashed: RuntimeError: boom", text)
+        self.assertIn("[WARNING helped.roads] 1 roads", text)
 
     @staticmethod
-    def write_ext(ext_dir, name, script=None, config="enable: true\n"):
+    def write_ext(ext_dir, name, script=None, config="enable: true\n", codes=None):
+        """codes: content of config/issue_codes.yaml, None to keep it (an empty one if there is none)"""
         for sub in ("script", "config"):
             os.makedirs(os.path.join(ext_dir, name, sub), exist_ok=True)
         with open(os.path.join(ext_dir, name, "config", "config.yaml"), "w", encoding="utf-8") as f:
             f.write(config)
+        codes_path = os.path.join(ext_dir, name, "config", "issue_codes.yaml")
+        if codes is not None or not os.path.isfile(codes_path):
+            with open(codes_path, "w", encoding="utf-8") as f:
+                f.write(codes or "{}\n")
         if script is not None:
             with open(os.path.join(ext_dir, name, "script", f"check_{name}.py"), "w", encoding="utf-8") as f:
                 f.write(script)

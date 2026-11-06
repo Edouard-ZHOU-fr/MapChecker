@@ -11,7 +11,7 @@ Lanelet2 地图检查工具：找出地图中缺少 `turn_direction`（转向灯
 | 1. turn_direction | 弯道 / 转弯，以及与其他 lane 相交（交叉 / 汇入）的直行 lanelet 是否设置了 `turn_direction` |
 | 2. right_of_way | 交叉 / 汇入的 lanelet 对是否有 `right_of_way` 规则元素；已有的 `right_of_way` 是否被优先 lanelet 引用、两条 lanelet 是否真的重叠（完全不重叠时输出 ERROR） |
 | 3. Autoware（`autoware_checking: true`） | 运行 [utils/validate_autoware_map.py](../utils/validate_autoware_map.py)（`autoware_lanelet2_validation` 的 Python 版）：地图加载错误、节点高度 `ele`、红绿灯、路由图中有冲突的 lanelet 的 `turn_direction`。其中 `turn_direction` 的结果合并到检查 1，同一 lanelet 只报告一次 |
-| LR 打分（`Using_LR: true`） | 给检查 1、2 中缺少 `turn_direction` / `right_of_way` 的告警打分 `[WARNING p=0.77]`，并按分数从高到低输出，见 [告警打分](#告警打分-using_lr) |
+| LR 打分（`Using_LR: true`） | 给检查 1、2 中缺少 `turn_direction` / `right_of_way` 的告警打分 `[WARNING turn_direction.missing p=0.77]`，并按分数从高到低输出，见 [告警打分](#告警打分-using_lr) |
 | 扩展检查（`ext/<名称>/config/config.yaml` 中 `enable: true`） | 例如 crosswalk 在横向上最多超出道路多少，见 [扩展检查](#扩展检查-ext) |
 | 热力图（`heatmap.enabled: true`） | 列出问题频发的区域，并生成热力图：按问题密度从蓝（少）到红（多）给地图着色，见 [问题热力图](#问题热力图-heatmap) |
 
@@ -75,6 +75,7 @@ python3 check_lanelet_map.py --only-ext crosswalk     # 只运行扩展检查 cr
 |---|---|---|
 | `input` | `lanelet2_map.osm` | 要检查的地图 |
 | `ignore_file` | `config/ignore.yaml` | 手动忽略的 lanelet，文件不存在时不忽略 |
+| `issue_codes_file` | `config/issue_codes.yaml` | 检查 1~3 的 issue code 及其级别和说明（扩展的在 `ext/<名称>/config/issue_codes.yaml` 中），见 [issue code](#issue-code-issue_codesyaml) |
 | `model_file` | `config/model.yaml` | 告警打分模型，`Using_LR: true` 时使用 |
 | `log.enabled` / `log.dir` | `false` / `logs` | 终端输出的同时写入日志 `logs/map_check_YYYYmmdd_HHMMSS.log` |
 | `heatmap.enabled` | `false` | `true`：在报告末尾列出问题频发的区域，并在 `log.dir` 生成同名的热力图 `map_check_YYYYmmdd_HHMMSS.png`，需要 matplotlib |
@@ -110,17 +111,39 @@ turn_direction: [614: 主路弯道，不需要转向灯]   # 只在检查 1 中�
 right_of_way:   []                            # 只在检查 2 中忽略 (涉及该 lanelet 的重叠对和 right_of_way 规则元素)
 autoware:       []                            # 只在检查 3 中忽略 (该 lanelet 引用的红绿灯问题)
 crosswalk:      [19942]                       # 只在扩展检查 crosswalk 中忽略 (键为扩展检查的名称)
+stopline.polyline: [52]                      # 只忽略这一类问题 (键为 issue code)
 ```
 
-每项可以只写 lanelet id（可以是负数），也可以写成 `id: 原因`。扩展检查的忽略列表也可以写在该扩展自己的配置中。没有运行的检查项的条目在报告末尾标为 `check not run`。
+每项可以只写 lanelet id（可以是负数），也可以写成 `id: 原因`。键为 issue code 时，只忽略这些 lanelet 上的这一类问题，同一检查的其他问题照常报告。扩展检查的忽略列表也可以写在该扩展自己的配置中。没有运行的检查项的条目在报告末尾标为 `check not run`。
 
 ## 输出
 
-- `[WARNING]`（黄色）：需要确认的问题；`[ERROR]`（红色）：确定有错，例如 `right_of_way` 的两条 lanelet 完全不重叠、地图加载错误。
+- `[WARNING]`（黄色）：需要确认的问题；`[ERROR]`（红色）：确定有错，例如 `right_of_way` 的两条 lanelet 完全不重叠、地图加载错误。每行带有问题的 code：`[WARNING stopline.polyline] stop_line 52: ...`，见 [issue code](#issue-code-issue_codesyaml)。
 - 检查 1 按 lanelet id 顺序输出。检查 2 先输出已有 `right_of_way` 规则元素本身的问题，再输出缺少 `right_of_way` 的告警，按区域（通常是一个路口）分组，每组给出中心坐标和涉及的 lanelet。
 - `Using_LR: true` 时顺序不同，见 [输出顺序](#输出顺序)。
-- 末尾的 Summary 列出各检查项的告警数，Hotspots 列出问题频发的区域（`heatmap.enabled: true` 时，见 [问题热力图](#问题热力图-heatmap)），Ignored lanelets 列出忽略列表的使用情况（不在地图中、在 AOI 外、屏蔽了几条）。
+- 末尾的 Summary 列出各检查项的告警数和每个 code 的问题数（`issues by code`），Hotspots 列出问题频发的区域（`heatmap.enabled: true` 时，见 [问题热力图](#问题热力图-heatmap)），Ignored lanelets 列出忽略列表的使用情况（不在地图中、在 AOI 外、屏蔽了几条）。
 - 退出码：`0` 没有问题，`1` 有未忽略的 WARNING / ERROR，`2` 参数或环境错误。可以用于 CI。
+
+### issue code `issue_codes.yaml`
+
+每一类问题都有一个固定的 code `<检查项>.<问题>`（如 `turn_direction.missing`、`stopline.polyline`、`trafficlight.not_recognized`），登记时带有级别、标题和说明。程序、测试和忽略列表都认 code，不依赖提示文字的具体写法，提示文字可以随时修改。每个检查有自己的登记文件：
+
+| 文件 | 登记的 code | 键 |
+|---|---|---|
+| [config/issue_codes.yaml](../config/issue_codes.yaml) | 检查 1~3（`turn_direction.*`、`right_of_way.*`、`autoware.*`）和 `ext.crashed` | 完整的 code，如 `right_of_way.missing` |
+| `ext/<名称>/config/issue_codes.yaml` | 扩展 `<名称>` 的 code，每个扩展都必须有 | 只写问题名：`ext/stopline/` 中的 `polyline` 即 code `stopline.polyline` |
+
+```yaml
+# ext/stopline/config/issue_codes.yaml
+polyline:
+  severity: warning        # error | warning | off
+  title: stop line with more than 2 points (polyline)
+  description: A stop line should be a straight line of 2 points; ...
+```
+
+- **级别**：`severity` 决定这类问题是 WARNING 还是 ERROR（也就影响退出码）；`off` 表示不再报告，Summary 中给出未报告的条数（`not reported (severity off ...)`）。
+- **按类型忽略**：在 `config/ignore.yaml` 中以 code 为键，见 [忽略列表](#忽略列表-configignoreyaml)。
+- **新增问题类型**：检查中用到的 code 必须先登记在它自己的文件中（未登记的 code 会被报告为该检查崩溃）；扩展的 code 写在 `config/issue_codes.yaml` 中会报错。`tests/test_issue_codes.py` 逐个文件检查源码中的 code 与登记的是否一一对应。所有 code 及其输出条件见 [doc/checkinglist.md](checkinglist.md)。
 
 Autoware 检查也可以单独运行（需要 source ROS）：
 
@@ -186,17 +209,17 @@ Masque: .../logs/map_check_20261027_115711_masque.osm (10 detection_area, subtyp
 
 ```
 === Check 1: turn_direction on curves / turns (angle threshold 30°, window 30 m) ===
-[WARNING p=0.77] lanelet 12528: curve without turn_direction (geometry turns right, suggest turn_direction=right) | ...
-[WARNING p=0.77] lanelet 17361: curve without turn_direction (geometry turns right, suggest turn_direction=right) | ...
+[WARNING turn_direction.missing p=0.77] lanelet 12528: curve without turn_direction (geometry turns right, suggest turn_direction=right) | ...
+[WARNING turn_direction.missing p=0.77] lanelet 17361: curve without turn_direction (geometry turns right, suggest turn_direction=right) | ...
 ...
-[WARNING p=0.07] lanelet 13646: intersects other lanes without turn_direction (geometry straight, ...) | ...
+[WARNING turn_direction.missing_straight p=0.07] lanelet 13646: intersects other lanes without turn_direction (geometry straight, ...) | ...
 
 === Check 2: right_of_way on overlapping lanelets (min overlap area 1.0 m²) ===
 -- Area 1, center (30772.0, 10528.6), lanelets: 9 14 445 450 10735 10754
 ...
 -- Area 26, center (30572.3, 11333.2), lanelets: 16541 16550 17931 17936
-[WARNING p=0.84] lanelet 12494 / 19041 (area 12): merge overlap (~13.5 m² at (31465.0, 9665.5)) without right_of_way
-[WARNING p=0.69] lanelet 14182 / 17379 (area 22): merge overlap (~12.9 m² at (30830.3, 11337.8)) without right_of_way
+[WARNING right_of_way.missing p=0.84] lanelet 12494 / 19041 (area 12): merge overlap (~13.5 m² at (31465.0, 9665.5)) without right_of_way
+[WARNING right_of_way.missing p=0.69] lanelet 14182 / 17379 (area 22): merge overlap (~12.9 m² at (30830.3, 11337.8)) without right_of_way
 ...
 ```
 
@@ -333,6 +356,7 @@ MapChecker/
   config/
     config.yaml               检查配置
     ignore.yaml               手动忽略的 lanelet
+    issue_codes.yaml          检查 1~3 的 issue code 及其级别和说明
     dataset.yaml              train_model.py 的配置 (地图仓库列表、标注规则)
     model.yaml                告警打分模型 (train_model.py 生成)
   utils/
@@ -349,6 +373,7 @@ MapChecker/
     features.py               告警的特征
     model.py                  读取模型并打分
     ignore.py                 忽略列表
+    issue_codes.py            读取各 issue_codes.yaml
     config.py                 读取 config.yaml
     printer.py                终端 / 日志输出
     heatmap.py                问题热力图和问题频发的区域

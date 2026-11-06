@@ -12,20 +12,21 @@ def check_autoware(result, aoi_ids, out):
     out.header("Check 3: Autoware validation (autoware_lanelet2_validation, turn_direction merged into Check 1)")
     out.info(f"format_version: {result.format_version or '-'}, map_version: {result.map_version or '-'}")
 
-    for msg in result.load:
-        out.error("autoware", msg)
+    for code, msg in result.load:
+        out.issue("autoware", code, msg)
     if result.turn_direction is None:
         out.info("Autoware turn_direction check skipped: fix the load errors first")
 
     if result.elevation:
         listed = ", ".join(result.elevation[:MAX_LISTED_NODES])
         more = f", ... (+{len(result.elevation) - MAX_LISTED_NODES})" if len(result.elevation) > MAX_LISTED_NODES else ""
-        out.warn("autoware", f"{len(result.elevation)} node(s) without elevation (ele) tag: {listed}{more}")
+        out.issue("autoware", "autoware.missing_elevation",
+                  f"{len(result.elevation)} node(s) without elevation (ele) tag: {listed}{more}")
 
-    for msg, lanelet_ids in result.traffic_light:
+    for code, msg, lanelet_ids in result.traffic_light:
         ids = [i for i in lanelet_ids if aoi_ids is None or i in aoi_ids]
         if ids:
-            out.warn("autoware", f"{msg} (lanelet {', '.join(ids)})", ids)
+            out.issue("autoware", code, f"{msg} (lanelet {', '.join(ids)})", ids)
 
     if out.count["autoware"] == 0 and out.errors["autoware"] == 0:
         out.ok("No issue found by Autoware validation")

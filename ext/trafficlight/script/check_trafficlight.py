@@ -222,7 +222,8 @@ def check_shared_lights(ctx, regs, checked, out):
         if len(rids) > 1 and any(r in checked for r in rids):
             w = ctx.ways.get(wid)
             pos = light_center(w)[0] if w is not None and valid_way(ctx, wid) else None
-            out.error(f"traffic light way {wid} is referenced by traffic_light {', '.join(rids)}: the camera matching "
+            out.issue("shared_light",
+                      f"traffic light way {wid} is referenced by traffic_light {', '.join(rids)}: the camera matching "
                       f"keeps a single (light, regulatory element) pair per light, the others never get its state "
                       f"and are treated as red; merge them into one regulatory element", tuple(rids), pos=pos)
 
@@ -235,31 +236,37 @@ def check_reg_elem(ctx, cfg, out, re, lanelets, center):
     for wid in re.refs("refers"):
         if not valid_way(ctx, wid):
             reason = "missing from the map" if wid not in ctx.ways else "with missing nodes or fewer than 2 points"
-            out.error(f"{name}: traffic light way {wid} {reason}", ids)
+            out.issue("light_invalid", f"{name}: traffic light way {wid} {reason}", ids)
         elif ctx.ways[wid].type != "traffic_light":
-            out.warn(f"{name}: refers way {wid} has type={ctx.ways[wid].type or '(none)'}, not traffic_light", ids,
-                     pos=light_center(ctx.ways[wid])[0])
+            out.issue("light_type",
+                      f"{name}: refers way {wid} has type={ctx.ways[wid].type or '(none)'}, not traffic_light", ids,
+                      pos=light_center(ctx.ways[wid])[0])
     if not re.refs("refers"):
-        out.error(f"{name}: no traffic light (refers)", ids)
+        out.issue("no_light", f"{name}: no traffic light (refers)", ids)
 
     ref_lines = re.refs("ref_line")
     stop = ctx.ways[ref_lines[0]] if ref_lines and valid_way(ctx, ref_lines[0]) else None
     stop_pos = stop.points.mean(axis=0) if stop is not None else (light_center(lights[0])[0] if lights else None)
     if not ref_lines:
-        out.error(f"{name}: no stop line (ref_line): the traffic_light module is not created, vehicles do not stop at "
+        out.issue("no_stop_line",
+                  f"{name}: no stop line (ref_line): the traffic_light module is not created, vehicles do not stop at "
                   f"red", ids, pos=stop_pos)
     elif stop is None:
-        out.error(f"{name}: stop line way {ref_lines[0]} is missing from the map or invalid", ids, pos=stop_pos)
+        out.issue("stop_line_invalid",
+                  f"{name}: stop line way {ref_lines[0]} is missing from the map or invalid", ids, pos=stop_pos)
     else:
         if len(ref_lines) > 1:
-            out.warn(f"{name}: {len(ref_lines)} ref_line, only the first one (way {stop.id}) is used as stop line",
-                     ids, pos=stop_pos)
+            out.issue("several_stop_lines",
+                      f"{name}: {len(ref_lines)} ref_line, only the first one (way {stop.id}) is used as stop line",
+                      ids, pos=stop_pos)
         if stop.type != "stop_line":
-            out.warn(f"{name}: ref_line way {stop.id} has type={stop.type or '(none)'}, not stop_line", ids,
-                     pos=stop_pos)
+            out.issue("stop_line_type",
+                      f"{name}: ref_line way {stop.id} has type={stop.type or '(none)'}, not stop_line", ids,
+                      pos=stop_pos)
     if not lanelets:
-        out.warn(f"{name}: not referenced by any lanelet, no traffic_light module is ever created for it", ids,
-                 pos=stop_pos)
+        out.issue("unused",
+                  f"{name}: not referenced by any lanelet, no traffic_light module is ever created for it", ids,
+                  pos=stop_pos)
 
     check_light_tags(cfg, out, name, ids, lights, stop)
     check_bulbs(ctx, cfg, out, re, name, ids, lights)
@@ -274,21 +281,25 @@ def check_light_tags(cfg, out, name, ids, lights, stop):
         pos = light_center(w)[0]
         kind = w.tags.get("traffic_light_type")
         if kind is None:
-            out.warn(f"{name}: traffic light way {w.id} has no traffic_light_type: used neither by the camera matching "
-                     f"(camera) nor by the V2X handler (v2x); reading it, the camera matching skips the following "
-                     f"lights of this regulatory element and the V2X handler all the following traffic lights of the "
-                     f"map", ids, pos=pos)
+            out.issue("missing_light_type",
+                      f"{name}: traffic light way {w.id} has no traffic_light_type: used neither by the camera "
+                      f"matching (camera) nor by the V2X handler (v2x); reading it, the camera matching skips the "
+                      f"following lights of this regulatory element and the V2X handler all the following traffic "
+                      f"lights of the map", ids, pos=pos)
         elif kind not in LIGHT_TYPES:
-            out.warn(f"{name}: traffic light way {w.id} has traffic_light_type={kind}, used neither by the camera "
-                     f"matching (camera) nor by the V2X handler (v2x)", ids, pos=pos)
+            out.issue("invalid_light_type",
+                      f"{name}: traffic light way {w.id} has traffic_light_type={kind}, used neither by the camera "
+                      f"matching (camera) nor by the V2X handler (v2x)", ids, pos=pos)
         if kind == "camera" and not light_height(w) > 0:
-            out.warn(f"{name}: camera traffic light way {w.id} has no valid height tag, the camera matching projects "
-                     f"a box of height 0", ids, pos=pos)
+            out.issue("missing_height",
+                      f"{name}: camera traffic light way {w.id} has no valid height tag, the camera matching projects "
+                      f"a box of height 0", ids, pos=pos)
         z = light_center(w)[1]
         if np.isfinite(z) and np.isfinite(stop_z) and not cfg["min_height"] <= z - stop_z <= cfg["max_height"]:
-            out.warn(f"{name}: traffic light way {w.id} is {z - stop_z:.2f} m above the stop line (expected "
-                     f"{cfg['min_height']:g} ~ {cfg['max_height']:g} m), the camera matching looks for it at this "
-                     f"height", ids, pos=pos)
+            out.issue("height_range",
+                      f"{name}: traffic light way {w.id} is {z - stop_z:.2f} m above the stop line (expected "
+                      f"{cfg['min_height']:g} ~ {cfg['max_height']:g} m), the camera matching looks for it at this "
+                      f"height", ids, pos=pos)
 
 
 def check_bulbs(ctx, cfg, out, re, name, ids, lights):
@@ -298,7 +309,8 @@ def check_bulbs(ctx, cfg, out, re, name, ids, lights):
     for bid in re.refs("light_bulbs"):
         bulbs = ctx.ways.get(bid)
         if bulbs is None or not bulbs.node_ids or bulbs.missing:
-            out.error(f"{name}: light_bulbs way {bid} is missing from the map or has missing nodes", ids)
+            out.issue("bulbs_invalid",
+                      f"{name}: light_bulbs way {bid} is missing from the map or has missing nodes", ids)
             continue
         offsets = {w.id: float(box_offset(bulbs.points, bulbs.z, w).max()) for w in lights}
         wid = min(offsets, key=offsets.get)
@@ -308,8 +320,9 @@ def check_bulbs(ctx, cfg, out, re, name, ids, lights):
                 lo, hi = z_range(ctx.ways[wid])
                 heights = (f": bulbs z {np.nanmin(bulbs.z):.2f} ~ {np.nanmax(bulbs.z):.2f}, "
                            f"light z {lo:.2f} ~ {hi:.2f}")
-            out.warn(f"{name}: light_bulbs way {bid} is up to {offsets[wid]:.2f} m from traffic light way {wid} "
-                     f"(max {cfg['bulb_max_offset']:g} m){heights}", ids, pos=bulbs.points.mean(axis=0))
+            out.issue("bulbs_offset",
+                      f"{name}: light_bulbs way {bid} is up to {offsets[wid]:.2f} m from traffic light way {wid} "
+                      f"(max {cfg['bulb_max_offset']:g} m){heights}", ids, pos=bulbs.points.mean(axis=0))
 
 
 def stop_crossing(ctx, lid, segments, center):
@@ -343,12 +356,14 @@ def check_recognition(ctx, cfg, out, name, re, lanelets, lights, stop, center):
         if hit is None:
             hit = stop_crossing(ctx, lid, extended, center)
             if hit is None:
-                out.error(f"{name} | lanelet {lid}: stop line {stop.id} does not cross the lanelet (nor its "
+                out.issue("stop_line_not_crossing",
+                          f"{name} | lanelet {lid}: stop line {stop.id} does not cross the lanelet (nor its "
                           f"predecessors / successors), even extended by {ext:g} m: the traffic_light module cannot "
                           f"place a stop point, vehicles on it do not stop at red", ids, pos=stop.points.mean(axis=0))
                 continue
-            out.warn(f"{name} | lanelet {lid}: stop line {stop.id} only crosses the lanelet once extended by {ext:g} m "
-                     f"(stop_line_extend_length) at {fmt_xy(hit[1])}", ids, pos=hit[1])
+            out.issue("stop_line_extended",
+                      f"{name} | lanelet {lid}: stop line {stop.id} only crosses the lanelet once extended by "
+                      f"{ext:g} m (stop_line_extend_length) at {fmt_xy(hit[1])}", ids, pos=hit[1])
         _, point, heading = hit
 
         problems = {}
@@ -371,7 +386,8 @@ def check_recognition(ctx, cfg, out, name, re, lanelets, lights, stop, center):
             continue
         detail = ", ".join(f"light {wid}: {reason}" for wid, reason in problems.items()) or (
             "no light with traffic_light_type camera or v2x")
-        out.error(f"{name} | lanelet {lid}: no light can be recognized from the lanelet ({detail}): the traffic_light "
+        out.issue("not_recognized",
+                  f"{name} | lanelet {lid}: no light can be recognized from the lanelet ({detail}): the traffic_light "
                   f"module gets no signal, treats it as red and vehicles on lanelet {lid} never pass the stop line at "
                   f"{fmt_xy(point)}", ids, pos=point)
 
@@ -381,9 +397,10 @@ def check_recognition(ctx, cfg, out, name, re, lanelets, lights, stop, center):
             for lid, reason in where:
                 by_reason.setdefault(reason, []).append(lid)
             lanes = ", ".join(f"lanelet {', '.join(lids)} ({reason})" for reason, lids in by_reason.items())
-            out.warn(f"{name}: traffic light way {wid} cannot be recognized from {lanes}; only the other light(s) of "
-                     f"the regulatory element are used there", (re.id, *(lid for lid, _ in where)),
-                     pos=light_center(ctx.ways[wid])[0])
+            out.issue("partly_recognized",
+                      f"{name}: traffic light way {wid} cannot be recognized from {lanes}; only the other light(s) of "
+                      f"the regulatory element are used there", (re.id, *(lid for lid, _ in where)),
+                      pos=light_center(ctx.ways[wid])[0])
 
 
 def check_other_lanes(ctx, cfg, out, re, lanelets, users, lights_of, center):
@@ -428,6 +445,7 @@ def check_other_lanes(ctx, cfg, out, re, lanelets, users, lights_of, center):
         else:
             advice = (f"which uses no traffic light: if it faces the same signal, add traffic_light {re.id} to it "
                       f"(vehicles on it do not stop at red); otherwise {module}")
-        out.warn(f"traffic_light {re.id} (lanelet {', '.join(lanelets)}): stop line {stop.id} crosses lanelet "
-                 f"{other.id} (same direction, {how}) at {fmt_xy(point)}, {advice}",
-                 (re.id, *lanelets, other.id), pos=point)
+        out.issue("crosses_other_lane",
+                  f"traffic_light {re.id} (lanelet {', '.join(lanelets)}): stop line {stop.id} crosses lanelet "
+                  f"{other.id} (same direction, {how}) at {fmt_xy(point)}, {advice}",
+                  (re.id, *lanelets, other.id), pos=point)

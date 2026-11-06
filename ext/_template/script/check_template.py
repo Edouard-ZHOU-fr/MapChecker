@@ -30,7 +30,7 @@ def check(ctx, cfg, out):
     ctx: utils.context.MapContext, the map and shared computed results (lanelets, vehicle, overlaps, topology,
          select(), etc.)
     cfg: configuration of this extension (default values already filled in)
-    out: utils.printer.ScopedPrinter, warn() / error() automatically go to this check item; the ignore list, Summary,
+    out: utils.printer.ScopedPrinter, issue() automatically goes to this check item; the ignore list, Summary,
          log and heatmap are all handled by the framework
     """
     out.header(f"Ext {out.category}: vehicle lanelets with tags {', '.join(cfg['required_tags'])}")
@@ -39,9 +39,12 @@ def check(ctx, cfg, out):
         missing = [tag for tag in cfg["required_tags"] if tag not in ll.tags]
         if missing:
             c = centerline(ll)
-            out.warn(f"lanelet {ll.id}: missing tag {', '.join(missing)}", (ll.id,), pos=c[len(c) // 2])
+            # issue name registered in config/issue_codes.yaml of this extension, which gives its severity; the
+            # report prints the code <extension name>.missing_tag
+            out.issue("missing_tag", f"lanelet {ll.id}: missing tag {', '.join(missing)}", (ll.id,),
+                      pos=c[len(c) // 2])
 
-    out.info(f"{len(lanelets)} vehicle lanelets checked: {out.warnings} with missing tags"
+    out.info(f"{len(lanelets)} vehicle lanelets checked: {out.total} with missing tags"
              + (f", {out.ignored} ignored" if out.ignored else ""))
-    if out.warnings == 0:
+    if out.total == 0:
         out.ok(f"All checked vehicle lanelets have {', '.join(cfg['required_tags'])}")

@@ -31,20 +31,23 @@ def check_turn_direction(lanelets, intersecting, opts, out, ctx, autoware=None, 
     for ll in sorted(lanelets.values(), key=by_id):
         td = ll.turn_direction
         if td is not None and td not in VALID_TURN_DIRECTIONS:
-            out.warn("turn_direction", f"lanelet {ll.id}: turn_direction=\"{td}\" is not a valid value (left/right/straight)", (ll.id,))
+            out.issue("turn_direction", "turn_direction.invalid_value",
+                      f"lanelet {ll.id}: turn_direction=\"{td}\" is not a valid value (left/right/straight)", (ll.id,))
             continue
 
         center = centerline(ll, step)
         angle = max_heading_change(center, step, window)
-        msg = None
+        code = msg = None
 
         if abs(angle) < turn_angle:
             # straight: only check those intersecting other lanes
             if ll.id in intersecting:
                 n_straight += 1
                 if td is None and straight_ok:
+                    code = "turn_direction.missing_straight"
                     msg = "intersects other lanes without turn_direction (geometry straight, suggest turn_direction=straight)"
                 elif td in ("left", "right") and not straight_ok:
+                    code = "turn_direction.not_straight"
                     msg = f"intersects other lanes, turn_direction={td} but geometry is straight"
         else:
             n_turns += 1
@@ -52,25 +55,29 @@ def check_turn_direction(lanelets, intersecting, opts, out, ctx, autoware=None, 
             if ignore_isolated and ll.id not in intersecting:
                 n_ignored += 1
             elif td is None:
+                code = "turn_direction.missing"
                 msg = f"curve without turn_direction (geometry turns {geo}, suggest turn_direction={geo})"
             elif straight_ok:
                 pass  # only check whether it is set, not the direction
             elif td == "straight":
+                code = "turn_direction.straight_on_curve"
                 msg = f"curve tagged turn_direction=straight, no turn signal (geometry turns {geo})"
             elif td != geo:
+                code = "turn_direction.opposite"
                 msg = f"turn_direction={td} is opposite to geometry (turns {geo})"
 
         if autoware and ll.id in autoware:
             n_autoware += 1
             if msg is None:
                 n_autoware_only += 1
+                code = "turn_direction.autoware_conflict"
                 msg = f"conflicts with {', '.join(autoware[ll.id])} in Autoware routing graph without turn_direction"
 
         if msg:
             middle = center[len(center) // 2]
             where = f"middle {fmt_xy(middle)}, angle {angle:+.0f}°, length {arc_length(center)[-1]:.1f} m"
-            out.warn("turn_direction", f"lanelet {ll.id}: {msg} | {where}", (ll.id,),
-                     turn_direction_features(ll, center, angle, opts, ctx), middle)
+            out.issue("turn_direction", code, f"lanelet {ll.id}: {msg} | {where}", (ll.id,),
+                      turn_direction_features(ll, center, angle, opts, ctx), middle)
     out.flush()
 
     if ignore_isolated:

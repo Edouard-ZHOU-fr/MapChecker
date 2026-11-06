@@ -91,29 +91,33 @@ def check_geometry(ctx, used_by, out):
         out.info("No stop line (way with type=stop_line) in the map")
         return 0
 
-    warnings, errors, ignored = out.warnings, out.errors, out.ignored
+    n_polylines = n_invalid = 0
+    ignored = out.ignored
     for w in lines:
         ids = (w.id, *used_by.get(w.id, ()))
         where = (f"lanelet {', '.join(used_by[w.id])}" if w.id in used_by
                  else "not referenced by any regulatory element")
         finite = w.points[np.isfinite(w.points).all(axis=1)]
         if w.missing:
-            out.error(f"stop_line {w.id}: references node(s) {' '.join(w.missing)} missing from the map | {where}",
-                      ids, pos=finite[0] if len(finite) else None)
+            n_invalid += bool(out.issue("missing_nodes",
+                                        f"stop_line {w.id}: references node(s) {' '.join(w.missing)} missing "
+                                        f"from the map | {where}", ids, pos=finite[0] if len(finite) else None))
         elif len(w.node_ids) < 2:
-            out.error(f"stop_line {w.id}: only {len(w.node_ids)} point(s), a stop line needs 2 | {where}",
-                      ids, pos=finite[0] if len(finite) else None)
+            n_invalid += bool(out.issue("too_few_points",
+                                        f"stop_line {w.id}: only {len(w.node_ids)} point(s), a stop line needs 2 | "
+                                        f"{where}", ids, pos=finite[0] if len(finite) else None))
         elif len(w.node_ids) > 2:
             dev = deviation(w.points)
             k = int(np.argmax(dev))
-            out.warn(f"stop_line {w.id}: {len(w.node_ids)} points (polyline), should be a straight line of 2 "
-                     f"points; node {w.node_ids[k]} is {dev[k]:.2f} m off the line between its ends "
-                     f"(length {arc_length(w.points)[-1]:.1f} m) | {where} at {fmt_xy(w.points[k])}",
-                     ids, pos=w.points[k])
+            n_polylines += bool(out.issue("polyline",
+                                          f"stop_line {w.id}: {len(w.node_ids)} points (polyline), should be a "
+                                          f"straight line of 2 points; node {w.node_ids[k]} is {dev[k]:.2f} m off the "
+                                          f"line between its ends (length {arc_length(w.points)[-1]:.1f} m) | {where} "
+                                          f"at {fmt_xy(w.points[k])}", ids, pos=w.points[k]))
 
     unused = [w.id for w in lines if w.id not in used_by]
     ignored = out.ignored - ignored
-    out.info(f"{len(lines)} stop lines checked: {out.warnings - warnings} polylines, {out.errors - errors} invalid"
+    out.info(f"{len(lines)} stop lines checked: {n_polylines} polylines, {n_invalid} invalid"
              + (f", {ignored} ignored" if ignored else ""))
     if unused:
         out.info(f"stop lines not referenced by any regulatory element: {' '.join(unused)}")
@@ -121,13 +125,13 @@ def check_geometry(ctx, used_by, out):
 
 
 def role_ways(ctx, re_, role, issues):
-    """Ways of the regulatory element in role; members that are not ways of the map are added to issues as ERROR"""
+    """Ways of the regulatory element in role; members that are not ways of the map are added to issues"""
     result = []
     for ref in re_.refs(role):
         if ref in ctx.ways:
             result.append(ctx.ways[ref])
         else:
-            issues.append((True, f"{role} {ref} is not a way of the map"))
+            issues.append(("member_not_way", f"{role} {ref} is not a way of the map"))
     return result
 
 
@@ -137,7 +141,7 @@ def type_of(way):
 
 def traffic_sign_issues(ctx, re_):
     """
-    Issues of a traffic_sign regulatory element [(is ERROR, text)]: refers the sign (type=traffic_sign), ref_line the
+    Issues of a traffic_sign regulatory element [(issue name, text)]: refers the sign (type=traffic_sign), ref_line the
     stop line (type=stop_line). Autoware's stop_line module handles the traffic signs with a stop_sign and stops at
     their ref_line; a traffic sign of another subtype is not required to have a stop line
     """
@@ -146,30 +150,30 @@ def traffic_sign_issues(ctx, re_):
     signs = [w for w in refers if w.type == "traffic_sign"]
     misplaced = [w for w in refers if w.type == "stop_line"]  # stop lines put in refers instead of ref_line
     if not signs and len(refers) == len(re_.refs("refers")):  # a member missing from the map is already reported
-        issues.append((True, "no traffic sign (refers way with type=traffic_sign), Autoware does not recognize it as "
-                             "a stop sign"))
+        issues.append(("sign_missing", "no traffic sign (refers way with type=traffic_sign), Autoware does not "
+                                       "recognize it as a stop sign"))
     stop_sign = not signs or any(w.subtype == "stop_sign" for w in signs)
     if stop_sign and not re_.refs("ref_line"):
         text = "no stop line (ref_line): Autoware's stop_line module stops at the ref_line, the vehicle does not stop " \
                "at this sign"
         if misplaced:
             text += f"; stop line way {misplaced[0].id} is in role refers, change its role to ref_line"
-        issues.append((True, text))
+        issues.append(("sign_no_stop_line", text))
     elif misplaced:
-        issues.append((False, f"stop line way {' '.join(w.id for w in misplaced)} is in role refers, a stop line "
-                              f"belongs in ref_line"))
+        issues.append(("sign_stop_line_in_refers", f"stop line way {' '.join(w.id for w in misplaced)} is in role "
+                                                   f"refers, a stop line belongs in ref_line"))
     for w in refers:
         if w.type not in ("traffic_sign", "stop_line"):
-            issues.append((False, f"refers way {w.id} has type={type_of(w)}, not traffic_sign"))
+            issues.append(("sign_refers_type", f"refers way {w.id} has type={type_of(w)}, not traffic_sign"))
     for w in ref_lines:
         if w.type != "stop_line":
-            issues.append((False, f"ref_line way {w.id} has type={type_of(w)}, not stop_line"))
+            issues.append(("sign_ref_line_type", f"ref_line way {w.id} has type={type_of(w)}, not stop_line"))
     return issues
 
 
 def road_marking_issues(ctx, re_):
     """
-    Issues of a road_marking regulatory element [(is ERROR, text)]: refers exactly one line, the stop line
+    Issues of a road_marking regulatory element [(issue name, text)]: refers exactly one line, the stop line
     (type=stop_line), and no ref_line. Autoware only uses a road_marking as a stop line (e.g. the intersection module)
     when its line has type=stop_line
     """
@@ -177,14 +181,15 @@ def road_marking_issues(ctx, re_):
     lines = role_ways(ctx, re_, "refers", issues)
     n = len(re_.refs("refers"))
     if n != 1:
-        issues.append((True, f"{n} refers, a road_marking must reference exactly one line (its stop line)"))
+        issues.append(("marking_refers_count", f"{n} refers, a road_marking must reference exactly one line (its "
+                                               f"stop line)"))
     for w in lines:
         if w.type != "stop_line":
-            issues.append((False, f"refers way {w.id} has type={type_of(w)}, not stop_line: Autoware does not use it "
-                                  f"as a stop line"))
+            issues.append(("marking_line_type", f"refers way {w.id} has type={type_of(w)}, not stop_line: Autoware "
+                                                f"does not use it as a stop line"))
     if re_.refs("ref_line"):
-        issues.append((False, f"ref_line {' '.join(re_.refs('ref_line'))}: a road_marking references its stop line "
-                              f"with refers only, its ref_line is not used"))
+        issues.append(("marking_ref_line", f"ref_line {' '.join(re_.refs('ref_line'))}: a road_marking references "
+                                           f"its stop line with refers only, its ref_line is not used"))
     return issues
 
 
@@ -233,8 +238,8 @@ def check_reg_elems(ctx, out):
         pos = locate(ctx, re_)
         where = f"lanelet {', '.join(lanelets)}" if lanelets else "not referenced by any lanelet"
         where += f" at {fmt_xy(pos)}" if pos is not None else ""
-        for is_error, text in issues:
-            (out.error if is_error else out.warn)(f"{re_.subtype} {re_.id}: {text} | {where}", ids, pos=pos)
+        for issue, text in issues:
+            out.issue(issue, f"{re_.subtype} {re_.id}: {text} | {where}", ids, pos=pos)
 
     count = {s: sum(1 for r in regs if r.subtype == s) for s in STOP_LINE_REG_ELEMS}
     ignored = out.ignored - ignored
@@ -254,7 +259,7 @@ def check(ctx, cfg, out):
                f"regulatory elements reference them correctly")
     n_lines = check_geometry(ctx, stop_line_users(ctx), out)
     n_regs = check_reg_elems(ctx, out)
-    if out.warnings == 0 and out.errors == 0 and (n_lines or n_regs):
+    if out.total == 0 and (n_lines or n_regs):
         done = ([f"all {n_lines} stop lines are straight lines of 2 points"] if n_lines else []) \
             + ([f"all {n_regs} traffic_sign / road_marking regulatory elements reference their stop line correctly"]
                if n_regs else [])

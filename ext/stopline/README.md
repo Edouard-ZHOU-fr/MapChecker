@@ -105,10 +105,10 @@ python3 check_lanelet_map.py path/to/lanelet2_map.osm --only-ext stopline
 
 ```
 === Ext stopline: stop lines are straight lines of 2 points, traffic_sign / road_marking regulatory elements reference them correctly ===
-[WARNING] stop_line 8019: 3 points (polyline), should be a straight line of 2 points; node -126419 is 1.00 m off the line between its ends (length 7.3 m) | lanelet 4199 at (72578.2, 24155.3)
+[WARNING stopline.polyline] stop_line 8019: 3 points (polyline), should be a straight line of 2 points; node -126419 is 1.00 m off the line between its ends (length 7.3 m) | lanelet 4199 at (72578.2, 24155.3)
 114 stop lines checked: 1 polylines, 0 invalid
-[ERROR] traffic_sign 51096: no stop line (ref_line): Autoware's stop_line module stops at the ref_line, the vehicle does not stop at this sign; stop line way 36087 is in role refers, change its role to ref_line | lanelet 49770 at (29762.1, 4846.8)
-[WARNING] road_marking 101437: refers way 101436 has type=line_thin, not stop_line: Autoware does not use it as a stop line | lanelet 38398 at (30141.4, 4984.0)
+[ERROR stopline.sign_no_stop_line] traffic_sign 51096: no stop line (ref_line): Autoware's stop_line module stops at the ref_line, the vehicle does not stop at this sign; stop line way 36087 is in role refers, change its role to ref_line | lanelet 49770 at (29762.1, 4846.8)
+[WARNING stopline.marking_line_type] road_marking 101437: refers way 101436 has type=line_thin, not stop_line: Autoware does not use it as a stop line | lanelet 38398 at (30141.4, 4984.0)
 31 regulatory elements checked (8 traffic_sign, 23 road_marking): 1 WARNING, 1 ERROR
 ```
 

@@ -4,6 +4,8 @@ Discovery, loading and running of extension checks (ext/<name>/). To write a new
 Each extension is a directory under ext/, whose name is the check name (used in output, Summary, ignore list and --set).
 Directories starting with _ (e.g. _template) are not run automatically, they can only be selected with --ext / --only-ext:
   config/config.yaml   enable / script / ignore are handled here, other parameters are passed to the extension as is
+  config/issue_codes.yaml  required: the issues the extension reports {issue name: severity, title, description},
+                       reported with out.issue(name, ...) as the code <name>.<issue>
   script/*.py          entry script, provides:
                          check(ctx, cfg, out)  required: ctx is utils.context.MapContext, cfg is the config (dict),
                                                out is utils.printer.ScopedPrinter
@@ -29,6 +31,7 @@ import yaml
 
 from .config import BASE_DIR
 from .ignore import parse_items
+from .issue_codes import read_extension_codes
 
 EXT_DIR = os.path.join(BASE_DIR, "ext")
 FRAMEWORK_CONFIG = {"enable": False, "script": None, "ignore": []}  # config items handled by the framework, with default values
@@ -40,11 +43,16 @@ class Extension:
     name: str              # directory name, i.e. the check name
     path: str              # ext/<name>/
     cfg: dict              # config; after load(), default values filled in and ignore is {lanelet id: reason}
+    codes: dict = None     # issue codes {<name>.<issue>: entry} of config/issue_codes.yaml, None if the file is missing
     module: object = None  # after load(), the entry script
 
     @property
     def config_path(self):
         return os.path.join(self.path, "config", "config.yaml")
+
+    @property
+    def codes_path(self):
+        return os.path.join(self.path, "config", "issue_codes.yaml")
 
     @property
     def enabled(self):
@@ -62,7 +70,10 @@ class Extension:
 
 
 def discover(ext_dir=EXT_DIR):
-    """All extensions under ext_dir {name: Extension}, sorted by name; only reads the configs, does not import scripts"""
+    """
+    All extensions under ext_dir {name: Extension}, sorted by name; only reads the configs and the issue codes, does
+    not import scripts
+    """
     result = {}
     for cfg_path in sorted(glob.glob(os.path.join(ext_dir, "*", "config", "config.yaml"))):
         path = os.path.dirname(os.path.dirname(cfg_path))
@@ -73,8 +84,19 @@ def discover(ext_dir=EXT_DIR):
             cfg = yaml.safe_load(f) or {}
         if not isinstance(cfg, dict):
             raise ValueError(f"{cfg_path}: top level must be a mapping")
-        result[name] = Extension(name, path, cfg)
+        ext = Extension(name, path, cfg)
+        if os.path.isfile(ext.codes_path):
+            ext.codes = read_extension_codes(ext.codes_path, name)
+        result[name] = ext
     return result
+
+
+def register_codes(codes, extensions):
+    """Add the issue codes of the extensions (those with a config/issue_codes.yaml) to codes (IssueCodes)"""
+    for ext in extensions:
+        if ext.codes is not None:
+            codes.add_extension(ext.name, ext.codes, ext.codes_path)
+    return codes
 
 
 def select(available, names=None):
@@ -108,8 +130,12 @@ def parse_overrides(items):
 def load(ext, overrides=None):
     """
     Import the extension's entry script and prepare its config: fill in default values, apply overrides
-    ({param: value}, from --set), parse ignore, call configure(). Raise ValueError on script or config problems. Return ext
+    ({param: value}, from --set), parse ignore, call configure(). Raise ValueError on script or config problems, or if
+    the extension has no config/issue_codes.yaml. Return ext
     """
+    if ext.codes is None:
+        raise ValueError(f"extension '{ext.name}': missing {ext.codes_path}, every extension registers the issues it "
+                         f"reports there (see ext/_template/config/issue_codes.yaml)")
     module = _import_script(ext)
     if not callable(getattr(module, "check", None)):
         raise ValueError(f"extension '{ext.name}': {module.__file__} has no check(ctx, cfg, out) function")
@@ -169,12 +195,16 @@ def _import_script(ext):
 
 
 def run_extensions(ctx, extensions, out):
-    """Run load()ed extensions in turn; if one raises, report an ERROR (counted in the exit code) and run the other checks"""
+    """
+    Run load()ed extensions in turn, with their issue codes added to those of out; if one raises, report an ERROR
+    (counted in the exit code) and run the other checks
+    """
+    register_codes(out.codes, extensions)
     for ext in extensions:
         scoped = out.scoped(ext.name)
         try:
             ext.module.check(ctx, ext.cfg, scoped)
         except Exception as e:  # a bug in one extension does not affect the results of the other checks
-            scoped.error(f"extension {ext.name} crashed: {type(e).__name__}: {e}")
+            out.issue(ext.name, "ext.crashed", f"extension {ext.name} crashed: {type(e).__name__}: {e}")
             for line in traceback.format_exc().rstrip().splitlines():
                 out.info(f"    {line}")
